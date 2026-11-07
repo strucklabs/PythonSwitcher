@@ -19,7 +19,12 @@ und Commit-Nachrichten sind deutsch.
   Ordner können dabei weggelassen werden. „Backups to keep“ (Standard 50) begrenzt die Anzahl.
 - Daten älterer Versionen (`einstellungen.json`, `Sicherungen\`, `Benutzer.txt`) werden beim Start
   automatisch auf die englischen Namen umgezogen bzw. weiter gelesen.
-- **Hinzufügen**: automatische Suche (PATH, Registry, übliche Ordner) oder Ordner wählen.
+- **Hinzufügen**: automatische Suche (PATH, Registry, übliche Ordner, von uv verwaltete Pythons unter
+  `%APPDATA%\uv\python` bzw. `UV_PYTHON_INSTALL_DIR`) oder Ordner wählen. uv-Pythons (Herkunft „uv“) werden nie gelöscht.
+- Reiter Python zeigt, was der Befehl **`py`** startet (PY_PYTHON → `%LOCALAPPDATA%\py.ini` → `py.ini` neben der
+  benutzten `py.exe` → neueste Version); `py` folgt nicht der PATH-Reihenfolge.
+- **Entfernen** sucht vorher im Benutzerordner nach virtuellen Umgebungen (`pyvenv.cfg`, `home` = diese Version;
+  max. 6 Ebenen, 15 s, ohne AppData/node_modules/.git) und warnt vor ihnen.
 - **Herunterladen**: Python über den offiziellen Installer von python.org (still, nur für den
   aktuellen Benutzer, ohne py-Launcher, Verknüpfungen und Dateizuordnungen), Git als PortableGit
   von GitHub. Jede Datei wird per Prüfsumme (SHA-256, bei älteren Python-Versionen nur MD5)

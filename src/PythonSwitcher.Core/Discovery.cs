@@ -90,6 +90,10 @@ public sealed class Discovery
         // 4. Eigene Downloads
         AddChildren(candidates, _folders.InstallRoot(tool.Kind));
 
+        // 5. Von uv verwaltete Pythons
+        if (tool.Kind == ToolKind.Python)
+            AddChildren(candidates, UvPythonDir());
+
         var result = new List<string>();
         foreach (var c in candidates)
         {
@@ -100,6 +104,16 @@ public sealed class Discovery
             result.Add(c.TrimEnd('\\'));
         }
         return result;
+    }
+
+    /// <summary>Ordner, in den uv Python-Versionen installiert (UV_PYTHON_INSTALL_DIR oder %APPDATA%\uv\python).</summary>
+    public static string UvPythonDir()
+    {
+        var custom = Environment.GetEnvironmentVariable("UV_PYTHON_INSTALL_DIR", EnvironmentVariableTarget.User)
+                     ?? Environment.GetEnvironmentVariable("UV_PYTHON_INSTALL_DIR", EnvironmentVariableTarget.Machine);
+        return !string.IsNullOrWhiteSpace(custom)
+            ? Environment.ExpandEnvironmentVariables(custom)
+            : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "uv", "python");
     }
 
     private static void AddRoot(List<string> list, string? root)

@@ -55,7 +55,8 @@ public sealed class VersionChecker
     private ToolScan DefaultToolScan(IReadOnlyList<string> pythonRoots)
     {
         var env = new SystemEnvironment(_paths);
-        return new ToolScan(env.FindCommand, (exe, args) => env.Run(exe, args), SystemEnvironment.PyPiLatestAsync, pythonRoots);
+        return new ToolScan(env.FindCommand, (exe, args) => env.Run(exe, args), SystemEnvironment.PyPiLatestAsync, pythonRoots,
+            env.FindAllCommands, SystemEnvironment.FileVersion);
     }
 
     /// <summary>Kopie der Installationen mit frisch ausgelesener Version (z. B. nach einem Update von außen).</summary>

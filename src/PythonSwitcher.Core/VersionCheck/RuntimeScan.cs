@@ -23,6 +23,31 @@ public static class RuntimeScan
             var newestInstaller = installers.Where(r => r.Major == v.Major && r.Minor == v.Minor).DefaultIfEmpty().Max();
             var newestSource = allVersions.Where(r => r.Major == v.Major && r.Minor == v.Minor).DefaultIfEmpty().Max();
 
+            if (inst.Source == InstallSource.Uv)
+            {
+                // uv bezieht eigene Builds, auch für Versionen, die python.org nur als Quelltext veröffentlicht.
+                var newestAny = new[] { newestInstaller, newestSource }.Where(x => x is not null).DefaultIfEmpty().Max();
+                const string uvNote = "Managed by uv (for example for InvokeAI). Update it with uv, not with the python.org installer. " +
+                                      "Programs that use it may bring their own way to update it.";
+                if (newestAny is null)
+                {
+                    result.Add(new CheckItem(CheckCategory.Python, group, name, inst.Version, null, CheckStatus.Unbekannt,
+                        "The latest version of this series is not known.", uvNote, inst.Root, Target: target));
+                }
+                else if (VersionCompare.Compare(inst.Version, newestAny.ToString()) < 0)
+                {
+                    result.Add(new CheckItem(CheckCategory.Python, group, name, inst.Version, newestAny.ToString(),
+                        CheckStatus.UpdateVerfuegbar, $"Update: with uv (newest version of this series: {newestAny}).", uvNote,
+                        inst.Root, Target: target));
+                }
+                else
+                {
+                    result.Add(new CheckItem(CheckCategory.Python, group, name, inst.Version, newestAny.ToString(),
+                        CheckStatus.Aktuell, "", uvNote, inst.Root, Target: target));
+                }
+                continue;
+            }
+
             string? sourceNote = null;
             if (newestSource is not null && (newestInstaller is null || newestSource > newestInstaller)
                 && VersionCompare.Compare(inst.Version, newestSource.ToString()) < 0)

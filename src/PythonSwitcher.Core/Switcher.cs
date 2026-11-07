@@ -156,12 +156,13 @@ public sealed class Switcher
             if (version is null)
                 continue;
             var own = PathUtil.IsUnder(root, Folders.InstallRoot(tool.Kind));
+            var uv = tool.Kind == ToolKind.Python && PathUtil.IsUnder(root, Discovery.UvPythonDir());
             Settings.Installations.Add(new Installation
             {
                 Tool = tool.Kind,
                 Root = root,
                 Version = version,
-                Source = own ? InstallSource.Heruntergeladen : InstallSource.Gefunden,
+                Source = own ? InstallSource.Heruntergeladen : uv ? InstallSource.Uv : InstallSource.Gefunden,
             });
             added++;
         }
@@ -225,6 +226,24 @@ public sealed class Switcher
         if (!Settings.IsIgnored(installation.Root))
             Settings.Ignored.Add(installation.Root);
         _store.Save(Settings);
+    }
+
+    /// <summary>Was der py-Launcher in einem neu geöffneten Terminal ohne Angabe startet.</summary>
+    public PyDefault PyDefault()
+    {
+        var env = new VersionCheck.SystemEnvironment(_paths);
+        var py = env.FindCommand("py");
+        var inis = new List<string>
+        {
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "py.ini"),
+        };
+        if (py is not null)
+            inis.Add(Path.Combine(Path.GetDirectoryName(py)!, "py.ini"));
+        return PyLauncher.Resolve(Settings.For(ToolKind.Python),
+            name => Environment.GetEnvironmentVariable(name, EnvironmentVariableTarget.User)
+                    ?? Environment.GetEnvironmentVariable(name, EnvironmentVariableTarget.Machine),
+            inis,
+            f => File.Exists(f) ? File.ReadAllText(f) : null);
     }
 
     public EffectiveInfo Effective(ToolDefinition tool)

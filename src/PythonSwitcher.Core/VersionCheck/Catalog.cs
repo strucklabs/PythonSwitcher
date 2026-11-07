@@ -37,6 +37,12 @@ public sealed class CatalogEntry
     /// <summary>Hinweis, z. B. wenn das Werkzeug selbst Python-Versionen oder den PATH verwaltet.</summary>
     public string? Note { get; init; }
 
+    /// <summary>
+    /// Mehrere installierte Kopien über die Dateiversion den Programmdateien im PATH zuordnen
+    /// (Command + ".exe") und angeben, welche davon benutzt wird.
+    /// </summary>
+    public bool MapFilesByVersion { get; init; }
+
     /// <summary>winget-IDs, die trotz passendem Muster nicht zu diesem Eintrag gehören.</summary>
     public IReadOnlyList<string> ExcludeIds { get; init; } = [];
 
@@ -64,7 +70,7 @@ public static class Catalog
     [
         // ---------- Python-Werkzeuge ----------
         new() { Category = CheckCategory.PythonWerkzeug, Name = "Python Launcher (py)", WingetIds = ["Python.Launcher"],
-            NamePatterns = [@"^Python Launcher$"] },
+            NamePatterns = [@"^Python Launcher$"], Command = "py", MapFilesByVersion = true },
         new() { Category = CheckCategory.PythonWerkzeug, Name = "uv", WingetIds = ["astral-sh.uv"], Command = "uv",
             PyPiName = "uv", UpdateCommand = "uv self update", Note = ManagesPython },
         new() { Category = CheckCategory.PythonWerkzeug, Name = "pipx", Command = "pipx", PyPiName = "pipx",

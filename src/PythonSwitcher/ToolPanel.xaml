@@ -5,6 +5,8 @@
         <StackPanel DockPanel.Dock="Top" Margin="0,0,0,10">
             <TextBlock x:Name="ActiveText" FontSize="15" FontWeight="SemiBold" TextWrapping="Wrap" />
             <TextBlock x:Name="ActiveDetail" Foreground="#555" TextWrapping="Wrap" Margin="0,2,0,0" />
+            <TextBlock x:Name="PyDefaultText" Foreground="#555" TextWrapping="Wrap" Margin="0,2,0,0" Visibility="Collapsed"
+                       ToolTip="The &quot;py&quot; command (Python launcher) is not controlled by the PATH order. It uses its own default, shown here." />
             <Border x:Name="WarningBox" Background="#FFF4CE" BorderBrush="#E8C547" BorderThickness="1"
                     Padding="8,6" Margin="0,8,0,0" Visibility="Collapsed">
                 <TextBlock x:Name="WarningText" TextWrapping="Wrap" />

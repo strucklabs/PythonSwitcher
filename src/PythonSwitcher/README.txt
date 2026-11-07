@@ -32,10 +32,22 @@ How to use
     "Copy update command"    - copies the command that updates this entry
                                (for the pip summary: all outdated packages).
 - Remove: Removes a version from the list. Only versions downloaded with this
-  program can optionally be deleted as well.
+  program can optionally be deleted as well. Before removing, the program
+  looks for virtual environments (projects) in your user folder that were
+  created with this version and warns about them - they stop working if the
+  version is uninstalled or deleted.
 
 Good to know
 ------------
+- "python" and "py" are two different commands. "python" follows the PATH
+  order set by this program. "py" (the Python launcher) uses its own default
+  (environment variable PY_PYTHON or a py.ini file); the Python tab shows
+  which version "py" starts and where that default comes from.
+- Python versions managed by uv (a Python tool used for example by InvokeAI)
+  are listed with the source "uv (managed)". Their files are never deleted by
+  this program; update or remove them with uv.
+- The version check marks programs that are installed several times under the
+  same winget ID, and for the py launcher it shows which file is actually used.
 - Changes apply to terminals and programs started afterwards. Windows that
   are already open keep their previous state.
 - Windows reads the system PATH (applies to all users) first, then the user

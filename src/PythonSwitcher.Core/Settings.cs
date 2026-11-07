@@ -12,6 +12,8 @@ public enum InstallSource
     Manuell,
     /// <summary>Vom Tool heruntergeladen und installiert – nur diese darf das Tool löschen.</summary>
     Heruntergeladen,
+    /// <summary>Von uv verwaltetes Python (z. B. für InvokeAI); Dateien gehören uv und werden nie gelöscht.</summary>
+    Uv,
 }
 
 public sealed class Installation

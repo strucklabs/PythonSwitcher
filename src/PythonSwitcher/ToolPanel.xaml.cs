@@ -22,6 +22,7 @@ public sealed class InstallationRow(InstallationState state)
         InstallSource.Gefunden => "found",
         InstallSource.Manuell => "added",
         InstallSource.Heruntergeladen => "downloaded",
+        InstallSource.Uv => "uv (managed)",
         _ => "",
     };
 }
@@ -73,7 +74,28 @@ public partial class ToolPanel : UserControl
             ActiveDetail.Text = $"{eff.Entry}   ·   via the {ScopeName(eff.Scope)}";
             ShowWarning("Use \"Add folder …\" to add this installation to the list.");
         }
+        ShowPyDefault();
         UpdateButtons();
+    }
+
+    /// <summary>Nur im Reiter Python: was der Befehl "py" startet (folgt nicht der PATH-Reihenfolge).</summary>
+    private void ShowPyDefault()
+    {
+        if (_tool.Kind != ToolKind.Python)
+            return;
+        try
+        {
+            var d = _switcher.PyDefault();
+            var target = d.Installation is not null
+                ? $"Python {d.Installation.Version}"
+                : d.Tag is not null ? $"Python {d.Tag} (not in the list)" : "no Python";
+            PyDefaultText.Text = $"The \"py\" command starts {target} – {d.Source}.";
+            PyDefaultText.Visibility = Visibility.Visible;
+        }
+        catch (Exception)
+        {
+            PyDefaultText.Visibility = Visibility.Collapsed;
+        }
     }
 
     private static string ScopeName(PathScope? scope) => scope == PathScope.System ? "system PATH" : "user PATH";
@@ -242,12 +264,44 @@ public partial class ToolPanel : UserControl
         }
 
         var own = inst.Source == InstallSource.Heruntergeladen;
+
+        // Projekte (virtuelle Umgebungen) suchen, die auf dieser Version aufbauen
+        string dependents = "";
+        if (_tool.Kind == ToolKind.Python)
+        {
+            _main.SetBusy(true);
+            _main.SetStatus($"Looking for projects that use {name} …");
+            try
+            {
+                var scan = await Task.Run(() => new VenvScan().FindDependents(inst.Root, VenvScan.DefaultSearchRoots()));
+                if (scan.Dependents.Count > 0 || scan.Incomplete)
+                {
+                    dependents =
+                        (scan.Dependents.Count > 0
+                            ? "\n\nWarning: these virtual environments (projects) were created with this version and stop working " +
+                              "if it is uninstalled or deleted:\n" + string.Join("\n", scan.Dependents.Select(d => "   " + d.VenvFolder))
+                            : "") +
+                        (scan.Incomplete
+                            ? "\n\nThe search for projects using this version was stopped after 15 seconds; there may be more."
+                            : "");
+                }
+            }
+            finally
+            {
+                _main.SetBusy(false);
+                _main.SetStatus("Ready.");
+            }
+        }
+
         var intro = MessageBox.Show(_main,
             $"Remove {name} from the list?\n\n{inst.Root}\n\n" +
             (own
                 ? "This version was downloaded with PythonSwitcher. In the next step you can also delete it."
-                : "The files are kept. To uninstall the version completely, use Windows Settings > Apps."),
-            "Remove", MessageBoxButton.OKCancel, MessageBoxImage.Question);
+                : inst.Source == InstallSource.Uv
+                    ? "The files are kept. This version is managed by uv; to remove it completely, use uv (\"uv python uninstall\")."
+                    : "The files are kept. To uninstall the version completely, use Windows Settings > Apps.") +
+            dependents,
+            "Remove", MessageBoxButton.OKCancel, dependents.Contains("Warning") ? MessageBoxImage.Warning : MessageBoxImage.Question);
         if (intro != MessageBoxResult.OK)
             return;
 
@@ -257,7 +311,7 @@ public partial class ToolPanel : UserControl
             var del = MessageBox.Show(_main,
                 $"Also delete the files of {name}?\n\n{inst.Root}\n\n" +
                 "Packages installed later are lost as well. This cannot be undone. " +
-                "The PATH entries of this version are removed too.",
+                "The PATH entries of this version are removed too." + dependents,
                 "Delete files?", MessageBoxButton.YesNoCancel, MessageBoxImage.Warning);
             if (del == MessageBoxResult.Cancel)
                 return;
