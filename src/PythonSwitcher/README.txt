@@ -31,6 +31,11 @@ How to use
                                whether an update worked.
     "Copy update command"    - copies the command that updates this entry
                                (for the pip summary: all outdated packages).
+                               The commands work in PowerShell; commands
+                               without quotes also work in the Command Prompt.
+  Python installations marked as "externally managed" (for example by uv)
+  show newer package versions only as a note, without an update command,
+  because pip refuses to change them.
 - Remove: Removes a version from the list. Only versions downloaded with this
   program can optionally be deleted as well. Before removing, the program
   looks for virtual environments (projects) in your user folder that were

@@ -16,11 +16,33 @@ public sealed class PipScan
     public const string SummaryName = "Summary";
 
     private readonly Func<string, IReadOnlyList<string>, int, CancellationToken, Task<RunResult?>> _run;
+    private readonly Func<string, string?> _readFile;
 
-    public PipScan(Func<string, IReadOnlyList<string>, int, CancellationToken, Task<RunResult?>>? run = null)
+    /// <param name="run">Ersatz für den Programmaufruf (Tests).</param>
+    /// <param name="readFile">Ersatz für das Lesen von Dateien, hier der Markierung EXTERNALLY-MANAGED (Tests).</param>
+    public PipScan(Func<string, IReadOnlyList<string>, int, CancellationToken, Task<RunResult?>>? run = null,
+        Func<string, string?>? readFile = null)
     {
         _run = run ?? RunAsync;
+        _readFile = readFile ?? (f => File.Exists(f) ? File.ReadAllText(f) : null);
     }
+
+    /// <summary>
+    /// Ist diese Python als "extern verwaltet" markiert (PEP 668, z. B. von uv), lehnt pip Änderungen ab.
+    /// Liefert dann den Grund aus der Markierungsdatei, sonst null.
+    /// </summary>
+    public string? ExternallyManaged(string root)
+    {
+        var text = _readFile(Path.Combine(root, "Lib", "EXTERNALLY-MANAGED"));
+        if (text is null)
+            return null;
+        var reason = text.Split('\n').Select(l => l.Trim())
+            .FirstOrDefault(l => l.StartsWith("Error", StringComparison.OrdinalIgnoreCase) && l.Contains('='));
+        return reason is null ? "This Python installation is marked as externally managed." : reason[(reason.IndexOf('=') + 1)..].Trim();
+    }
+
+    private static string ManagedHint(string reason) =>
+        $"Not updatable with pip: {reason} Packages of this Python are meant to be changed only by the tool that manages it.";
 
     public async Task<List<CheckItem>> ScanAsync(Installation inst, CancellationToken ct)
     {
@@ -54,14 +76,26 @@ public sealed class PipScan
         var oldNames = old.Select(p => NormalizeName(p.Name)).ToHashSet();
         var outdatedSorted = old.OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase).ToList();
         int current = installed.Count(p => !oldNames.Contains(NormalizeName(p.Name)));
-        result.Add(new CheckItem(CheckCategory.PipPaket, group, SummaryName, $"{installed.Count} installed", null,
-            old.Count == 0 ? CheckStatus.Aktuell : CheckStatus.UpdateVerfuegbar,
-            old.Count == 0
-                ? $"All {installed.Count} packages are up to date."
-                : $"{old.Count} of {installed.Count} packages are outdated, {current} up to date. The update command updates all outdated ones.",
-            null, inst.Root,
-            old.Count == 0 ? null : UpgradeCommand(python, outdatedSorted.Select(p => p.Name)),
-            summaryTarget));
+        var managed = ExternallyManaged(inst.Root);
+        if (managed is not null)
+        {
+            // Nur zur Information: Updates per pip sind hier nicht vorgesehen und würden abgelehnt.
+            result.Add(new CheckItem(CheckCategory.PipPaket, group, SummaryName, $"{installed.Count} installed", null,
+                CheckStatus.Hinweis,
+                $"{old.Count} of {installed.Count} packages have newer versions. " + ManagedHint(managed),
+                null, inst.Root, Target: summaryTarget));
+        }
+        else
+        {
+            result.Add(new CheckItem(CheckCategory.PipPaket, group, SummaryName, $"{installed.Count} installed", null,
+                old.Count == 0 ? CheckStatus.Aktuell : CheckStatus.UpdateVerfuegbar,
+                old.Count == 0
+                    ? $"All {installed.Count} packages are up to date."
+                    : $"{old.Count} of {installed.Count} packages are outdated, {current} up to date. The update command updates all outdated ones.",
+                null, inst.Root,
+                old.Count == 0 ? null : UpgradeCommand(python, outdatedSorted.Select(p => p.Name)),
+                summaryTarget));
+        }
 
         // Alle Pakete alphabetisch: veraltete mit neuer Version, aktuelle mit ihrer installierten Version
         // (pip hat für diese Python-Version nichts Neueres gefunden).
@@ -69,7 +103,12 @@ public sealed class PipScan
         foreach (var p in installed.OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase))
         {
             var target = new CheckTarget(TargetKind.PipPackage, ToolKind.Python, inst.Root, Package: p.Name);
-            if (latestByName.TryGetValue(NormalizeName(p.Name), out var latest))
+            if (latestByName.TryGetValue(NormalizeName(p.Name), out var latest) && managed is not null)
+            {
+                result.Add(new CheckItem(CheckCategory.PipPaket, group, p.Name, p.Version, latest, CheckStatus.Hinweis,
+                    "Newer version available. " + ManagedHint(managed), null, inst.Root, Target: target));
+            }
+            else if (latest is not null)
             {
                 var cmd = UpgradeCommand(python, [p.Name]);
                 result.Add(new CheckItem(CheckCategory.PipPaket, group, p.Name, p.Version, latest, CheckStatus.UpdateVerfuegbar,
@@ -86,8 +125,15 @@ public sealed class PipScan
 
     public static string GroupFor(Installation inst) => $"pip packages · Python {inst.Version}";
 
+    /// <summary>
+    /// Befehl zum Aktualisieren. Ohne Leerzeichen im Pfad ohne Anführungszeichen – das funktioniert in PowerShell und cmd.
+    /// Mit Leerzeichen PowerShell-Form mit Aufrufoperator (&amp; "…"), da PowerShell ein Programm in Anführungszeichen sonst
+    /// nicht startet.
+    /// </summary>
     public static string UpgradeCommand(string python, IEnumerable<string> packages) =>
-        $"\"{python}\" -m pip install --upgrade {string.Join(" ", packages)}";
+        $"{Exe(python)} -m pip install --upgrade {string.Join(" ", packages)}";
+
+    public static string Exe(string path) => path.Contains(' ') ? $"& \"{path}\"" : path;
 
     /// <summary>
     /// Einzelprüfung eines Pakets: liest nur die installierte Version (schnell, ohne Netz) und vergleicht sie mit der
@@ -108,6 +154,8 @@ public sealed class PipScan
         var cmp = VersionCompare.Compare(found.Version, previous.Latest);
         if (cmp is >= 0)
             return previous with { Installed = found.Version, Status = CheckStatus.Aktuell, Hint = "", UpdateCommand = null };
+        if (ExternallyManaged(inst.Root) is { } managed)
+            return previous with { Installed = found.Version, Status = CheckStatus.Hinweis, Hint = "Newer version available. " + ManagedHint(managed), UpdateCommand = null };
         var cmd = UpgradeCommand(python, [package]);
         return previous with { Installed = found.Version, Status = CheckStatus.UpdateVerfuegbar, Hint = "Update: " + cmd, UpdateCommand = cmd };
     }

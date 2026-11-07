@@ -21,12 +21,46 @@ public class PipScanTests
         var summary = items.Single(i => i.Name == PipScan.SummaryName);
         Assert.Equal(("3 installed", CheckStatus.UpdateVerfuegbar), (summary.Installed, summary.Status));
         Assert.Contains("2 of 3 packages are outdated, 1 up to date", summary.Hint);
-        Assert.Equal(@"""C:\Py312\python.exe"" -m pip install --upgrade Pillow pip", summary.UpdateCommand);
+        Assert.Equal(@"C:\Py312\python.exe -m pip install --upgrade Pillow pip", summary.UpdateCommand);
 
         var pillow = items.Single(i => i.Name == "Pillow");
         Assert.Equal(("10.0.0", "12.1.0"), (pillow.Installed, pillow.Latest));
-        Assert.Contains(@"""C:\Py312\python.exe"" -m pip install --upgrade Pillow", pillow.Hint);
+        Assert.Contains(@"C:\Py312\python.exe -m pip install --upgrade Pillow", pillow.Hint);
         Assert.All(items, i => Assert.Equal("pip packages · Python 3.12.7", i.Group));
+    }
+
+    [Theory]
+    [InlineData(@"C:\Py312\python.exe", @"C:\Py312\python.exe -m pip install --upgrade a b")]
+    [InlineData(@"C:\Program Files\Python\python.exe", @"& ""C:\Program Files\Python\python.exe"" -m pip install --upgrade a b")]
+    public void Commands_work_in_powershell(string python, string expected)
+        => Assert.Equal(expected, PipScan.UpgradeCommand(python, ["a", "b"]));
+
+    private static PipScan Managed(RunResult list, RunResult outdated) => new(
+        (_, args, _, _) => Task.FromResult<RunResult?>(args.Contains("--outdated") ? outdated : list),
+        f => f.EndsWith(@"Lib\EXTERNALLY-MANAGED")
+            ? "[externally-managed]\nError=This Python installation is managed by uv and should not be modified.\n"
+            : null);
+
+    [Fact]
+    public async Task Externally_managed_python_gets_no_pip_commands()
+    {
+        var items = await Managed(new(0, List, ""), new(0, Outdated, "")).ScanAsync(Py, default);
+        Assert.All(items, i => Assert.Null(i.UpdateCommand));
+        Assert.DoesNotContain(items, i => i.Status == CheckStatus.UpdateVerfuegbar); // zählt nicht als Update
+        var pillow = items.Single(i => i.Name == "Pillow");
+        Assert.Equal(("12.1.0", CheckStatus.Hinweis), (pillow.Latest, pillow.Status));
+        Assert.Contains("managed by uv and should not be modified", pillow.Hint);
+        Assert.Contains("2 of 3 packages have newer versions", items[0].Hint);
+    }
+
+    [Fact]
+    public async Task Recheck_in_externally_managed_python_gives_no_command()
+    {
+        var scan = Managed(new(0, List, ""), new(0, Outdated, ""));
+        var pillow = (await scan.ScanAsync(Py, default)).Single(i => i.Name == "Pillow");
+        var again = await scan.RecheckPackageAsync(pillow, Py, default);
+        Assert.Equal(CheckStatus.Hinweis, again.Status);
+        Assert.Null(again.UpdateCommand);
     }
 
     [Fact]

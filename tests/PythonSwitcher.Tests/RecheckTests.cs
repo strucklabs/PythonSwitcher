@@ -138,8 +138,8 @@ public class RecheckTests
         };
         var items = await Run(m.Checker());
         Assert.Equal("winget upgrade --id Python.Python.3.12", items.Single(i => i.Name == "Python 3.12").UpdateCommand);
-        Assert.Equal(@"""C:\Py312\python.exe"" -m pip install --upgrade Pillow", items.Single(i => i.Name == "Pillow").UpdateCommand);
-        Assert.Equal(@"""C:\Py312\python.exe"" -m pip install --upgrade Pillow", items.Single(i => i.Name == PipScan.SummaryName).UpdateCommand);
+        Assert.Equal(@"C:\Py312\python.exe -m pip install --upgrade Pillow", items.Single(i => i.Name == "Pillow").UpdateCommand);
+        Assert.Equal(@"C:\Py312\python.exe -m pip install --upgrade Pillow", items.Single(i => i.Name == PipScan.SummaryName).UpdateCommand);
         Assert.Null(items.Single(i => i.Category == CheckCategory.Git).UpdateCommand); // aktuell → kein Befehl
         // Hinweis auf neuere Hauptversion: weder Befehl noch Einzelprüfung
         var hint = items.Single(i => i.Name == "Python 3.15");
