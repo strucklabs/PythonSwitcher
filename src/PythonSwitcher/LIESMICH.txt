@@ -22,6 +22,12 @@ Bedienung
 - Herunterladen: Eine offizielle Version laden (Python von python.org,
   Git als PortableGit von GitHub). Prüfsumme und digitale Signatur werden
   vor dem Ausführen geprüft.
+- Versionscheck (eigener Reiter): Zeigt auf Knopfdruck, was rund um Python
+  installiert ist (Python, Git, Werkzeuge, Editoren, Programmiersprachen und
+  pip-Pakete) und wofür es eine neuere Version gibt, jeweils mit einem Hinweis,
+  wie sich aktualisieren lässt. Dabei wird nichts verändert. Für Editoren und
+  Sprachen wird winget (App-Installer von Microsoft) genutzt, falls vorhanden.
+  Mit Rechtsklick > "Hinweis kopieren" lässt sich ein Befehl übernehmen.
 - Entfernen: Nimmt eine Version aus der Liste. Nur Versionen, die mit diesem
   Programm heruntergeladen wurden, können auf Wunsch auch gelöscht werden.
 

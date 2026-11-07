@@ -25,6 +25,11 @@ Kleines Windows-Programm (WPF, .NET 10) zum Verwalten mehrerer Python- und Git-I
 - **Entfernen** trägt nur aus der Liste aus. Selbst heruntergeladene Versionen können nach
   Rückfrage gelöscht werden; fremde Installationen werden nie gelöscht.
 
+- **Versionscheck** (eigener Reiter, nur auf Knopfdruck, verändert nichts): Python- und Git-Versionen gegen
+  python.org/GitHub, pip-Pakete je Python-Version (`pip list --outdated`), Python-Werkzeuge, Editoren und
+  Sprachen aus einem erweiterbaren Katalog (`VersionCheck/Catalog.cs`) über `winget list`, PATH und PyPI.
+  Zu jedem Update ein Hinweis, wie man selbst aktualisiert. Plan und Abnahme: `PLAN-VERSIONSCHECK.md`.
+
 ## Aufbau
 
 | Ordner | Inhalt |

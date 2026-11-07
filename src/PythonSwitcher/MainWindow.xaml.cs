@@ -21,6 +21,12 @@ public partial class MainWindow : Window
             _panels.Add(panel);
             Tabs.Items.Add(new TabItem { Header = tool.DisplayName, Content = panel, Padding = new Thickness(14, 4, 14, 4) });
         }
+        Tabs.Items.Add(new TabItem
+        {
+            Header = "Versionscheck",
+            Content = new VersionCheckPanel(switcher, this),
+            Padding = new Thickness(14, 4, 14, 4),
+        });
         Loaded += async (_, _) =>
         {
             foreach (var p in _panels)

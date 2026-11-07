@@ -69,6 +69,28 @@ public static class ReleaseCatalog
             .ToList();
     }
 
+    /// <summary>Alle stabilen Python-Versionen, auch solche ohne Windows-Installer (nur Quelltext).</summary>
+    public static async Task<List<Version>> PythonAllVersionsAsync(CancellationToken ct)
+    {
+        var json = await Http.GetStringAsync("https://www.python.org/api/v2/downloads/release/?is_published=true", ct);
+        return ParsePythonAllVersions(json);
+    }
+
+    internal static List<Version> ParsePythonAllVersions(string json)
+    {
+        var result = new List<Version>();
+        using var doc = JsonDocument.Parse(json);
+        foreach (var rel in doc.RootElement.EnumerateArray())
+        {
+            if (rel.TryGetProperty("pre_release", out var pre) && pre.ValueKind == JsonValueKind.True)
+                continue;
+            var m = Regex.Match(rel.GetProperty("name").GetString() ?? "", @"^Python (\d+)\.(\d+)\.(\d+)$");
+            if (m.Success)
+                result.Add(new Version(int.Parse(m.Groups[1].Value), int.Parse(m.Groups[2].Value), int.Parse(m.Groups[3].Value)));
+        }
+        return result.Distinct().OrderByDescending(v => v).ToList();
+    }
+
     /// <summary>Stabile Git-für-Windows-Versionen als PortableGit (64 Bit), neueste zuerst.</summary>
     public static async Task<List<AvailableRelease>> GitAsync(CancellationToken ct)
     {
