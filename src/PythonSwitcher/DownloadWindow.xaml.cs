@@ -22,6 +22,7 @@ public partial class DownloadWindow : Window
     private readonly CancellationTokenSource _cts = new();
     private List<ReleaseRow> _all = [];
     private bool _busy;
+    private bool _downloading;
 
     /// <summary>Statusmeldung für das Hauptfenster, wenn etwas installiert wurde.</summary>
     public string? Result { get; private set; }
@@ -31,19 +32,19 @@ public partial class DownloadWindow : Window
         _switcher = switcher;
         _tool = tool;
         InitializeComponent();
-        Title = $"{tool.DisplayName} herunterladen";
+        Title = $"Download {tool.DisplayName}";
         IntroText.Text = tool.Kind == ToolKind.Python
-            ? "Offizielle Python-Versionen von python.org (64 Bit). Die Installation erfolgt nur für den aktuellen Benutzer, " +
-              "ohne Änderungen an Dateizuordnungen und ohne den py-Launcher. Die neue Version wird im PATH hinter der aktiven eingetragen und ist danach mit „Aktivieren“ wählbar."
-            : "Offizielle Git-für-Windows-Versionen (PortableGit, 64 Bit) von GitHub. Sie werden in einen eigenen Ordner entpackt, " +
-              "ohne Installation im System. Die neue Version wird im PATH hinter der aktiven eingetragen und ist danach mit „Aktivieren“ wählbar.";
+            ? "Official Python versions from python.org (64-bit). They are installed for the current user only, " +
+              "without changing file associations and without the py launcher. The new version is added to the PATH behind the active one and can then be selected with \"Activate\"."
+            : "Official Git for Windows versions (PortableGit, 64-bit) from GitHub. They are extracted into a separate folder " +
+              "without a system installation. The new version is added to the PATH behind the active one and can then be selected with \"Activate\".";
         Loaded += async (_, _) => await LoadAsync();
         Closing += OnClosing;
     }
 
     private async Task LoadAsync()
     {
-        StatusText.Text = "Versionsliste wird geladen …";
+        StatusText.Text = "Loading version list …";
         Progress.IsIndeterminate = true;
         try
         {
@@ -52,14 +53,14 @@ public partial class DownloadWindow : Window
                 : await ReleaseCatalog.GitAsync(_cts.Token);
             _all = releases.Select(Describe).ToList();
             ApplyFilter();
-            StatusText.Text = _all.Count == 0 ? "Es wurden keine passenden Versionen gefunden." : "Bitte eine Version wählen.";
+            StatusText.Text = _all.Count == 0 ? "No matching versions were found." : "Please select a version.";
         }
         catch (OperationCanceledException)
         {
         }
         catch (Exception ex)
         {
-            StatusText.Text = "Die Versionsliste konnte nicht geladen werden: " + ex.Message;
+            StatusText.Text = "The version list could not be loaded: " + ex.Message;
         }
         finally
         {
@@ -73,17 +74,17 @@ public partial class DownloadWindow : Window
         var sameVersion = _switcher.Settings.For(_tool.Kind)
             .FirstOrDefault(i => i.Version == r.Version || PathUtil.SameDirectory(i.Root, target));
         if (sameVersion is not null)
-            return new ReleaseRow { Release = r, CanInstall = false, Note = "bereits in der Liste" };
+            return new ReleaseRow { Release = r, CanInstall = false, Note = "already in the list" };
         if (Directory.Exists(target) && Directory.EnumerateFileSystemEntries(target).Any())
-            return new ReleaseRow { Release = r, CanInstall = false, Note = $"Zielordner ist nicht leer: {target}" };
+            return new ReleaseRow { Release = r, CanInstall = false, Note = $"target folder is not empty: {target}" };
 
         if (_tool.Kind == ToolKind.Python && Installers.ExistingPythonForMinor(r.SortKey) is { } existing)
         {
             return new ReleaseRow
             {
                 Release = r, CanInstall = false,
-                Note = $"nicht möglich: Python {r.SortKey.Major}.{r.SortKey.Minor} ist bereits per Installer eingerichtet ({existing}). " +
-                       "Der Installer würde diese Version ersetzen statt eine zweite anzulegen.",
+                Note = $"not possible: Python {r.SortKey.Major}.{r.SortKey.Minor} is already set up by its installer ({existing}). " +
+                       "The installer would replace that version instead of adding a second one.",
             };
         }
         return new ReleaseRow { Release = r, CanInstall = true, Note = "" };
@@ -121,22 +122,27 @@ public partial class DownloadWindow : Window
         SetBusy(true);
         try
         {
+            _downloading = true;
             var progress = new Progress<double>(p =>
             {
+                if (!_downloading)
+                    return;
                 Progress.IsIndeterminate = false;
                 Progress.Value = p;
             });
             var inst = await new InstallService(_switcher).DownloadAndInstallAsync(_tool, r, progress, text =>
             {
                 StatusText.Text = text;
-                if (!text.Contains("heruntergeladen"))
+                // Nur während des Downloads gibt es einen echten Fortschritt; danach läuft die Anzeige unbestimmt.
+                _downloading = text.StartsWith("Downloading", StringComparison.Ordinal);
+                if (!_downloading)
                     Progress.IsIndeterminate = true;
             }, _cts.Token);
 
             var nowActive = ReferenceEquals(_switcher.Effective(_tool).Installation, inst);
             Result = nowActive
-                ? $"{_tool.DisplayName} {inst.Version} wurde installiert und ist aktiv, weil vorher keine andere Version aktiv war."
-                : $"{_tool.DisplayName} {inst.Version} wurde installiert und im PATH hinter der aktiven Version eingetragen. Mit „Aktivieren“ wird sie verwendet.";
+                ? $"{_tool.DisplayName} {inst.Version} was installed and is active because no other version was active before."
+                : $"{_tool.DisplayName} {inst.Version} was installed and added to the PATH behind the active version. Use \"Activate\" to use it.";
             StatusText.Text = Result;
             Progress.IsIndeterminate = false;
             Progress.Value = 1;
@@ -145,14 +151,15 @@ public partial class DownloadWindow : Window
         }
         catch (OperationCanceledException)
         {
-            StatusText.Text = "Abgebrochen.";
+            StatusText.Text = "Cancelled.";
         }
         catch (Exception ex)
         {
-            StatusText.Text = "Fehler: " + ex.Message;
+            StatusText.Text = "Error: " + ex.Message;
         }
         finally
         {
+            _downloading = false;
             Progress.IsIndeterminate = false;
             SetBusy(false);
         }
@@ -164,7 +171,7 @@ public partial class DownloadWindow : Window
         InstallButton.IsEnabled = !busy && List.SelectedItem is ReleaseRow { CanInstall: true };
         List.IsEnabled = !busy;
         ShowAll.IsEnabled = !busy;
-        CloseButton.Content = busy ? "Abbrechen" : "Schließen";
+        CloseButton.Content = busy ? "Cancel" : "Close";
     }
 
     private void Close_Click(object sender, RoutedEventArgs e)
@@ -182,7 +189,7 @@ public partial class DownloadWindow : Window
             // Während Installation/Entpacken nicht schließen, damit nichts halb fertig zurückbleibt.
             e.Cancel = true;
             _cts.Cancel();
-            StatusText.Text = "Der laufende Schritt wird noch beendet …";
+            StatusText.Text = "Finishing the current step …";
         }
     }
 }

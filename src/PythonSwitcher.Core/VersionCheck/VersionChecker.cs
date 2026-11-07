@@ -17,23 +17,23 @@ public sealed class VersionChecker
         var pythons = installations.Where(i => i.Tool == ToolKind.Python && File.Exists(ToolDefinition.Python.MainExecutablePath(i.Root))).ToList();
         var gits = installations.Where(i => i.Tool == ToolKind.Git && File.Exists(ToolDefinition.Git.MainExecutablePath(i.Root))).ToList();
 
-        progress.Report("Programmliste wird abgefragt (winget) …");
+        progress.Report("Reading the list of installed programs (winget) …");
         var winget = await Winget.ListAsync(ct);
 
-        progress.Report("Python-Versionen werden bei python.org abgefragt …");
+        progress.Report("Querying Python versions from python.org …");
         var pyInstallers = await Try(async () => (await ReleaseCatalog.PythonAsync(ct)).Select(r => r.SortKey).ToList());
         var pyAll = await Try(() => ReleaseCatalog.PythonAllVersionsAsync(ct)) ?? [];
         if (pyInstallers is null)
             result.Add(new CheckItem(CheckCategory.Python, ToolScan.GroupName(CheckCategory.Python), "python.org", null, null,
-                CheckStatus.Unbekannt, "Die Versionsliste von python.org ließ sich nicht abrufen (keine Verbindung?)."));
+                CheckStatus.Unbekannt, "The version list from python.org could not be retrieved (no connection?)."));
         else
             result.AddRange(RuntimeScan.Python(pythons, pyInstallers, pyAll, winget));
 
-        progress.Report("Git-Versionen werden abgefragt …");
+        progress.Report("Querying Git versions …");
         var gitReleases = await Try(() => ReleaseCatalog.GitAsync(ct)) ?? [];
         result.AddRange(RuntimeScan.Git(gits, gitReleases, winget));
 
-        progress.Report("Werkzeuge, Editoren und Sprachen werden erkannt …");
+        progress.Report("Detecting tools, editors and languages …");
         var env = new SystemEnvironment(_paths);
         var tools = new ToolScan(env.FindCommand, (exe, args) => env.Run(exe, args), SystemEnvironment.PyPiLatestAsync,
             pythons.Select(p => p.Root).ToList());
@@ -42,18 +42,18 @@ public sealed class VersionChecker
         {
             result.Add(new CheckItem(CheckCategory.PythonWerkzeug, ToolScan.GroupName(CheckCategory.PythonWerkzeug), "winget", null, null,
                 CheckStatus.Hinweis,
-                "winget (App-Installer von Microsoft) wurde nicht gefunden oder hat nicht geantwortet. Editoren und Sprachen " +
-                "werden deshalb nur teilweise erkannt, neueste Versionen fehlen."));
+                "winget (App Installer by Microsoft) was not found or did not respond. Editors and languages " +
+                "are therefore only partially detected, and latest versions are missing."));
         }
 
         var pip = new PipScan();
         for (int i = 0; i < pythons.Count; i++)
         {
-            progress.Report($"pip-Pakete von Python {pythons[i].Version} werden geprüft ({i + 1} von {pythons.Count}) …");
+            progress.Report($"Checking pip packages of Python {pythons[i].Version} ({i + 1} of {pythons.Count}) …");
             result.AddRange(await pip.ScanAsync(pythons[i], ct));
         }
 
-        progress.Report("Fertig.");
+        progress.Report("Done.");
         return result;
 
         async Task<T?> Try<T>(Func<Task<T>> f) where T : class

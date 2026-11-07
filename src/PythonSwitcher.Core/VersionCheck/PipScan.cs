@@ -12,6 +12,9 @@ public sealed record RunResult(int ExitCode, string Out, string Err);
 /// <summary>Fragt je Python-Installation die pip-Pakete ab (nur lesen, es wird nichts installiert).</summary>
 public sealed class PipScan
 {
+    /// <summary>Name der Übersichtszeile je Python-Version.</summary>
+    public const string SummaryName = "Summary";
+
     private readonly Func<string, IReadOnlyList<string>, int, CancellationToken, Task<RunResult?>> _run;
 
     public PipScan(Func<string, IReadOnlyList<string>, int, CancellationToken, Task<RunResult?>>? run = null)
@@ -22,18 +25,18 @@ public sealed class PipScan
     public async Task<List<CheckItem>> ScanAsync(Installation inst, CancellationToken ct)
     {
         var python = ToolDefinition.Python.MainExecutablePath(inst.Root);
-        var group = $"pip-Pakete · Python {inst.Version}";
+        var group = $"pip packages · Python {inst.Version}";
         CheckItem Info(string text, CheckStatus status = CheckStatus.Hinweis) =>
             new(CheckCategory.PipPaket, group, "pip", null, null, status, text, null, inst.Root);
 
         var all = await _run(python, ["-m", "pip", "list", "--format=json", "--disable-pip-version-check"], 60_000, ct);
         if (all is null)
-            return [Info("Python ließ sich nicht starten oder hat nicht rechtzeitig geantwortet.", CheckStatus.Unbekannt)];
+            return [Info("Python could not be started or did not respond in time.", CheckStatus.Unbekannt)];
         if (all.ExitCode != 0)
         {
             return all.Err.Contains("No module named pip", StringComparison.OrdinalIgnoreCase)
-                ? [Info("In dieser Python-Version ist pip nicht installiert. Nachinstallieren: python -m ensurepip --upgrade")]
-                : [Info("pip meldete einen Fehler: " + FirstLine(all.Err), CheckStatus.Unbekannt)];
+                ? [Info("pip is not installed for this Python version. To install it: python -m ensurepip --upgrade")]
+                : [Info("pip reported an error: " + FirstLine(all.Err), CheckStatus.Unbekannt)];
         }
         var installed = ParseList(all.Out);
 
@@ -41,19 +44,19 @@ public sealed class PipScan
         var result = new List<CheckItem>();
         if (outdated is null || outdated.ExitCode != 0 || LooksOffline(outdated.Err))
         {
-            result.Add(Info($"{installed.Count} Pakete installiert. Ob es neuere Versionen gibt, ließ sich nicht prüfen " +
-                            "(keine Verbindung zu PyPI oder Zeitlimit überschritten).", CheckStatus.Unbekannt));
+            result.Add(Info($"{installed.Count} packages installed. Newer versions could not be checked " +
+                            "(no connection to PyPI or time limit exceeded).", CheckStatus.Unbekannt));
             return result;
         }
 
         var old = ParseList(outdated.Out).Where(p => p.Latest is not null).ToList();
-        result.Add(new CheckItem(CheckCategory.PipPaket, group, "Übersicht", $"{installed.Count} Pakete", null,
+        result.Add(new CheckItem(CheckCategory.PipPaket, group, SummaryName, $"{installed.Count} packages", null,
             old.Count == 0 ? CheckStatus.Aktuell : CheckStatus.UpdateVerfuegbar,
-            old.Count == 0 ? "Alle Pakete sind aktuell." : $"{old.Count} davon veraltet.", null, inst.Root));
+            old.Count == 0 ? "All packages are up to date." : $"{old.Count} of them outdated.", null, inst.Root));
         foreach (var p in old.OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase))
         {
             result.Add(new CheckItem(CheckCategory.PipPaket, group, p.Name, p.Version, p.Latest, CheckStatus.UpdateVerfuegbar,
-                $"Aktualisieren: \"{python}\" -m pip install --upgrade {p.Name}", null, inst.Root));
+                $"Update: \"{python}\" -m pip install --upgrade {p.Name}", null, inst.Root));
         }
         return result;
     }

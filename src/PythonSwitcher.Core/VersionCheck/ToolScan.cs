@@ -79,10 +79,10 @@ public sealed class ToolScan
     {
         CheckCategory.Python => "Python",
         CheckCategory.Git => "Git",
-        CheckCategory.PythonWerkzeug => "Python-Werkzeuge",
-        CheckCategory.Editor => "Editoren und Entwicklungsumgebungen",
-        CheckCategory.Sprache => "Sprachen und Laufzeitumgebungen",
-        CheckCategory.PipPaket => "pip-Pakete",
+        CheckCategory.PythonWerkzeug => "Python tools",
+        CheckCategory.Editor => "Editors and IDEs",
+        CheckCategory.Sprache => "Languages and runtimes",
+        CheckCategory.PipPaket => "pip packages",
         _ => c.ToString(),
     };
 
@@ -117,11 +117,11 @@ public sealed class ToolScan
             var status = cmp is null ? CheckStatus.Unbekannt : cmp < 0 ? CheckStatus.UpdateVerfuegbar : CheckStatus.Aktuell;
             var hint = status switch
             {
-                CheckStatus.UpdateVerfuegbar => "Aktualisieren: " + (entry.UpdateCommand ?? "über die Website des Herstellers"),
+                CheckStatus.UpdateVerfuegbar => "Update: " + (entry.UpdateCommand ?? "via the vendor's website"),
                 CheckStatus.Aktuell => "",
                 _ => installed is null
-                    ? "Gefunden, aber die Versionsnummer ließ sich nicht lesen."
-                    : "Neueste Version nicht ermittelbar." + (entry.UpdateCommand is null ? "" : " Selbst prüfen: " + entry.UpdateCommand),
+                    ? "Found, but the version number could not be read."
+                    : "Latest version could not be determined." + (entry.UpdateCommand is null ? "" : " Check manually: " + entry.UpdateCommand),
             };
             result.Add(new CheckItem(entry.Category, group, entry.Name, installed, latest, status, hint, entry.Note, path));
         }
@@ -137,13 +137,13 @@ public sealed class ToolScan
         {
             status = CheckStatus.Unbekannt;
             latest = null;
-            hint = "Die Angaben von winget ließen sich nicht sicher zuordnen.";
+            hint = "The winget output could not be matched reliably.";
         }
         else if (p.Available is not null)
         {
             status = CheckStatus.UpdateVerfuegbar;
             latest = p.Available;
-            hint = $"Aktualisieren: winget upgrade --id {p.Id}" + (entry.UpdateCommand is null ? "" : $" (oder: {entry.UpdateCommand})");
+            hint = $"Update: winget upgrade --id {p.Id}" + (entry.UpdateCommand is null ? "" : $" (or: {entry.UpdateCommand})");
         }
         else if (p.Source is not null)
         {
@@ -155,7 +155,7 @@ public sealed class ToolScan
         {
             status = CheckStatus.Unbekannt;
             latest = null;
-            hint = "Nicht über winget bekannt; neueste Version beim Hersteller prüfen.";
+            hint = "Not known to winget; check the vendor's website for the latest version.";
         }
         return new CheckItem(entry.Category, group, entry.Name, p.Version, latest, status, hint, entry.Note, p.Name);
     }

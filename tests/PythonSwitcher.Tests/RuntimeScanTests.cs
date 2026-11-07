@@ -37,7 +37,7 @@ public class RuntimeScanTests
         var p310 = items.Single(i => i.Name == "Python 3.10");
         Assert.Equal(CheckStatus.Aktuell, p310.Status);
         Assert.Contains("3.10.22", p310.Note);
-        Assert.Contains("keine Windows-Installer", p310.Note);
+        Assert.Contains("no longer gets Windows installers", p310.Note);
     }
 
     [Fact]

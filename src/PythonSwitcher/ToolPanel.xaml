@@ -12,20 +12,20 @@
         </StackPanel>
 
         <WrapPanel DockPanel.Dock="Top" Margin="0,0,0,2">
-            <Button x:Name="ActivateButton" Content="Aktivieren" FontWeight="SemiBold" Click="Activate_Click"
-                    ToolTip="Stellt die gewählte Version im PATH nach vorn. Gilt für neu geöffnete Terminals und Programme." />
-            <Button Content="Ordner hinzufügen …" Click="AddFolder_Click"
-                    ToolTip="Eine Installation, die nicht automatisch gefunden wurde, über ihren Ordner aufnehmen." />
-            <Button Content="Herunterladen …" Click="Download_Click"
-                    ToolTip="Eine offizielle Version herunterladen und installieren." />
-            <Button x:Name="RemoveButton" Content="Entfernen …" Click="Remove_Click" />
-            <Button x:Name="OpenButton" Content="Ordner öffnen" Click="Open_Click" />
-            <Button Content="Neu suchen" Click="Scan_Click"
-                    ToolTip="Sucht erneut nach installierten Versionen und liest die Versionsnummern neu ein." />
+            <Button x:Name="ActivateButton" Content="Activate" FontWeight="SemiBold" Click="Activate_Click"
+                    ToolTip="Moves the selected version to the front of the PATH. Applies to newly opened terminals and programs." />
+            <Button Content="Add folder …" Click="AddFolder_Click"
+                    ToolTip="Add an installation that was not found automatically by selecting its folder." />
+            <Button Content="Download …" Click="Download_Click"
+                    ToolTip="Download and install an official version." />
+            <Button x:Name="RemoveButton" Content="Remove …" Click="Remove_Click" />
+            <Button x:Name="OpenButton" Content="Open folder" Click="Open_Click" />
+            <Button Content="Search again" Click="Scan_Click"
+                    ToolTip="Searches for installed versions again and re-reads the version numbers." />
         </WrapPanel>
 
         <TextBlock DockPanel.Dock="Bottom" Foreground="#666" TextWrapping="Wrap" Margin="0,8,0,0"
-                   Text="Hinweis: Änderungen am PATH gelten für Terminals und Programme, die danach gestartet werden. Bereits geöffnete Fenster behalten ihren bisherigen Stand." />
+                   Text="Note: PATH changes apply to terminals and programs started afterwards. Windows that are already open keep their previous state." />
 
         <ListView x:Name="List" SelectionMode="Single" SelectionChanged="List_SelectionChanged"
                   MouseDoubleClick="List_MouseDoubleClick">
@@ -33,8 +33,8 @@
                 <GridView>
                     <GridViewColumn Header="Status" Width="90" DisplayMemberBinding="{Binding StatusText}" />
                     <GridViewColumn Header="Version" Width="140" DisplayMemberBinding="{Binding Version}" />
-                    <GridViewColumn Header="Herkunft" Width="130" DisplayMemberBinding="{Binding SourceText}" />
-                    <GridViewColumn Header="Ordner" Width="460" DisplayMemberBinding="{Binding Root}" />
+                    <GridViewColumn Header="Source" Width="130" DisplayMemberBinding="{Binding SourceText}" />
+                    <GridViewColumn Header="Folder" Width="460" DisplayMemberBinding="{Binding Root}" />
                 </GridView>
             </ListView.View>
             <ListView.ItemContainerStyle>

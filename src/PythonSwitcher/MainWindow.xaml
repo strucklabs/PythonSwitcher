@@ -7,9 +7,16 @@
         <Border DockPanel.Dock="Bottom" BorderBrush="#DDD" BorderThickness="0,1,0,0" Padding="0,8,0,0">
             <DockPanel>
                 <Button x:Name="UndoButton" DockPanel.Dock="Right" Margin="8,0,0,0" Click="Undo_Click"
-                        Content="Letzte PATH-Änderung rückgängig"
-                        ToolTip="Spielt die zuletzt angelegte Sicherung des PATH zurück. Vor jeder Änderung legt das Programm automatisch eine Sicherung an." />
-                <Button DockPanel.Dock="Right" Margin="8,0,0,0" Click="OpenBackups_Click" Content="Sicherungen öffnen" />
+                        Content="Undo last PATH change"
+                        ToolTip="Restores the most recent PATH backup. The program creates a backup automatically before every change." />
+                <Button DockPanel.Dock="Right" Margin="8,0,0,0" Click="OpenBackups_Click" Content="Open backups" />
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center" Margin="12,0,0,0"
+                            ToolTip="Number of PATH backups to keep (the most recent ones). Older backups are deleted automatically. Allowed: 1 to 9999. Press Enter to apply.">
+                    <TextBlock Text="Backups to keep:" VerticalAlignment="Center" Margin="0,0,6,0" />
+                    <TextBox x:Name="BackupLimitBox" Width="50" VerticalContentAlignment="Center" HorizontalContentAlignment="Right"
+                             AutomationProperties.Name="Backups to keep" MaxLength="4"
+                             KeyDown="BackupLimit_KeyDown" LostFocus="BackupLimit_LostFocus" />
+                </StackPanel>
                 <TextBlock x:Name="StatusText" VerticalAlignment="Center" TextWrapping="Wrap" />
             </DockPanel>
         </Border>

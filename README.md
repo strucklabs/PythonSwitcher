@@ -1,7 +1,8 @@
 # PythonSwitcher
 
 Kleines Windows-Programm (WPF, .NET 10) zum Verwalten mehrerer Python- und Git-Installationen:
-**Hinzufügen, Entfernen, Aktivieren**.
+**Hinzufügen, Entfernen, Aktivieren**. Die Oberfläche ist englisch; diese Entwickler-Doku, Code-Kommentare
+und Commit-Nachrichten sind deutsch.
 
 ## Funktionsweise
 
@@ -13,8 +14,11 @@ Kleines Windows-Programm (WPF, .NET 10) zum Verwalten mehrerer Python- und Git-I
   System-PATH, fragt das Programm nach und sortiert nur mit Zustimmung (UAC-Abfrage) auch dort um.
 - Änderungen gelten für **neu gestartete** Terminals und Programme.
 - Vor jeder Änderung wird der bisherige Wert gesichert
-  (`%LOCALAPPDATA%\PythonSwitcher\Sicherungen\<Zeitstempel>\Benutzer.txt` / `System.txt`).
-  „Letzte PATH-Änderung rückgängig“ spielt die jüngste Sicherung zurück.
+  (`%LOCALAPPDATA%\PythonSwitcher\Backups\<Zeitstempel>\User.txt` / `System.txt`).
+  „Undo last PATH change“ spielt die jüngste Sicherung zurück; Einträge für inzwischen gelöschte
+  Ordner können dabei weggelassen werden. „Backups to keep“ (Standard 50) begrenzt die Anzahl.
+- Daten älterer Versionen (`einstellungen.json`, `Sicherungen\`, `Benutzer.txt`) werden beim Start
+  automatisch auf die englischen Namen umgezogen bzw. weiter gelesen.
 - **Hinzufügen**: automatische Suche (PATH, Registry, übliche Ordner) oder Ordner wählen.
 - **Herunterladen**: Python über den offiziellen Installer von python.org (still, nur für den
   aktuellen Benutzer, ohne py-Launcher, Verknüpfungen und Dateizuordnungen), Git als PortableGit
@@ -50,5 +54,5 @@ dotnet publish src/PythonSwitcher -p:PublishProfile=Dist
 ```
 
 Baut eine eigenständige Einzeldatei-EXE (win-x64, läuft ohne installiertes .NET) und legt
-`PythonSwitcher.zip` (Ordner `PythonSwitcher\` mit EXE und `LIESMICH.txt`) **auf dem Desktop** ab;
+`PythonSwitcher.zip` (Ordner `PythonSwitcher\` mit EXE und `README.txt`) **auf dem Desktop** ab;
 eine vorhandene ZIP wird überschrieben.

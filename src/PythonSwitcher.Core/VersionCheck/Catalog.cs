@@ -58,7 +58,7 @@ public sealed class CatalogEntry
 public static class Catalog
 {
     private const string ManagesPython =
-        "Verwaltet selbst Python-Versionen bzw. den PATH und kann sich mit dem Umsortieren durch dieses Programm überschneiden.";
+        "Manages Python versions or the PATH itself and may interfere with the reordering done by this program.";
 
     public static IReadOnlyList<CatalogEntry> Entries { get; } =
     [

@@ -4,11 +4,11 @@
     <DockPanel Margin="10">
         <StackPanel DockPanel.Dock="Top" Margin="0,0,0,8">
             <TextBlock TextWrapping="Wrap" Foreground="#555" Margin="0,0,0,8"
-                       Text="Zeigt, was rund um Python installiert ist (Python, Git, Werkzeuge, Editoren, Sprachen und pip-Pakete) und wofür es eine neuere Version gibt. Es wird nur angezeigt, nichts verändert. Für die Prüfung ist eine Internetverbindung nötig; sie dauert je nach Anzahl der Python-Versionen etwa eine Minute." />
+                       Text="Shows what is installed around Python (Python, Git, tools, editors, languages and pip packages) and what has a newer version. Nothing is changed, it only displays information. The check needs an internet connection and takes about a minute, depending on the number of Python versions." />
             <WrapPanel>
-                <Button x:Name="CheckButton" Content="Nach Updates suchen" FontWeight="SemiBold" Click="Check_Click" />
-                <Button x:Name="CancelButton" Content="Abbrechen" Click="Cancel_Click" IsEnabled="False" />
-                <CheckBox x:Name="OnlyUpdates" Content="Nur Einträge mit Update anzeigen" VerticalAlignment="Center" Margin="8,0,0,8"
+                <Button x:Name="CheckButton" Content="Check for updates" FontWeight="SemiBold" Click="Check_Click" />
+                <Button x:Name="CancelButton" Content="Cancel" Click="Cancel_Click" IsEnabled="False" />
+                <CheckBox x:Name="OnlyUpdates" Content="Show only entries with updates" VerticalAlignment="Center" Margin="8,0,0,8"
                           Checked="Filter_Changed" Unchecked="Filter_Changed" />
             </WrapPanel>
             <TextBlock x:Name="ProgressText" TextWrapping="Wrap" />
@@ -26,7 +26,7 @@
             </ListView.GroupStyle>
             <ListView.ContextMenu>
                 <ContextMenu>
-                    <MenuItem Header="Hinweis kopieren" Click="CopyHint_Click" />
+                    <MenuItem Header="Copy hint" Click="CopyHint_Click" />
                 </ContextMenu>
             </ListView.ContextMenu>
             <ListView.ItemContainerStyle>
@@ -43,8 +43,8 @@
             <ListView.View>
                 <GridView>
                     <GridViewColumn Header="Name" Width="190" DisplayMemberBinding="{Binding Name}" />
-                    <GridViewColumn Header="Installiert" Width="110" DisplayMemberBinding="{Binding Installed}" />
-                    <GridViewColumn Header="Neueste" Width="90" DisplayMemberBinding="{Binding Latest}" />
+                    <GridViewColumn Header="Installed" Width="110" DisplayMemberBinding="{Binding Installed}" />
+                    <GridViewColumn Header="Latest" Width="90" DisplayMemberBinding="{Binding Latest}" />
                     <GridViewColumn Header="Status" Width="120">
                         <GridViewColumn.CellTemplate>
                             <DataTemplate>
@@ -52,7 +52,7 @@
                             </DataTemplate>
                         </GridViewColumn.CellTemplate>
                     </GridViewColumn>
-                    <GridViewColumn Header="Hinweis" Width="380">
+                    <GridViewColumn Header="Hint" Width="380">
                         <GridViewColumn.CellTemplate>
                             <DataTemplate>
                                 <StackPanel>

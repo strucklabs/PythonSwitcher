@@ -22,10 +22,10 @@ public sealed class CheckRow(CheckItem item)
 
     public string StatusText => item.Status switch
     {
-        CheckStatus.UpdateVerfuegbar => "Update verfügbar",
-        CheckStatus.Aktuell => "aktuell",
-        CheckStatus.Unbekannt => "unbekannt",
-        _ => "Hinweis",
+        CheckStatus.UpdateVerfuegbar => "update available",
+        CheckStatus.Aktuell => "up to date",
+        CheckStatus.Unbekannt => "unknown",
+        _ => "note",
     };
 
     public Brush StatusBrush => item.Status switch
@@ -39,6 +39,8 @@ public sealed class CheckRow(CheckItem item)
 
 public partial class VersionCheckPanel : UserControl
 {
+    private const string UpdatePrefix = "Update: ";
+
     private readonly Switcher _switcher;
     private readonly MainWindow _main;
     private CancellationTokenSource? _cts;
@@ -49,7 +51,7 @@ public partial class VersionCheckPanel : UserControl
         _switcher = switcher;
         _main = main;
         InitializeComponent();
-        ProgressText.Text = "Noch nicht geprüft.";
+        ProgressText.Text = "Not checked yet.";
     }
 
     private async void Check_Click(object sender, RoutedEventArgs e)
@@ -73,19 +75,19 @@ public partial class VersionCheckPanel : UserControl
             _rows = items.Select(i => new CheckRow(i)).ToList();
             ApplyFilter();
             int updates = _rows.Count(r => r.IsUpdate && r.Item.Category != CheckCategory.PipPaket);
-            int pipUpdates = _rows.Count(r => r.IsUpdate && r.Item.Category == CheckCategory.PipPaket && r.Name != "Übersicht");
-            var text = $"Geprüft am {started:dd.MM.yyyy HH:mm} ({(DateTime.Now - started).TotalSeconds:0} s): " +
-                       $"{updates} Programme mit Update, {pipUpdates} veraltete pip-Pakete.";
+            int pipUpdates = _rows.Count(r => r.IsUpdate && r.Item.Category == CheckCategory.PipPaket && r.Name != PipScan.SummaryName);
+            var text = $"Checked on {started.ToString(MainWindow.TimeFormat)} ({(DateTime.Now - started).TotalSeconds:0} s): " +
+                       $"{updates} program(s) with updates, {pipUpdates} outdated pip package(s).";
             ProgressText.Text = text;
-            _main.SetStatus("Versionscheck abgeschlossen. " + text);
+            _main.SetStatus("Version check finished. " + text);
         }
         catch (OperationCanceledException)
         {
-            ProgressText.Text = "Abgebrochen.";
+            ProgressText.Text = "Cancelled.";
         }
         catch (Exception ex)
         {
-            ProgressText.Text = "Fehler beim Versionscheck: " + ex.Message;
+            ProgressText.Text = "Error during the version check: " + ex.Message;
         }
         finally
         {
@@ -99,7 +101,7 @@ public partial class VersionCheckPanel : UserControl
     private void Cancel_Click(object sender, RoutedEventArgs e)
     {
         _cts?.Cancel();
-        ProgressText.Text = "Wird abgebrochen …";
+        ProgressText.Text = "Cancelling …";
     }
 
     private void Filter_Changed(object sender, RoutedEventArgs e) => ApplyFilter();
@@ -118,15 +120,15 @@ public partial class VersionCheckPanel : UserControl
     {
         if (List.SelectedItem is not CheckRow row || string.IsNullOrEmpty(row.Hint))
             return;
-        var text = row.Hint.StartsWith("Aktualisieren: ") ? row.Hint["Aktualisieren: ".Length..] : row.Hint;
+        var text = row.Hint.StartsWith(UpdatePrefix, StringComparison.Ordinal) ? row.Hint[UpdatePrefix.Length..] : row.Hint;
         try
         {
             Clipboard.SetText(text);
-            _main.SetStatus("Hinweis in die Zwischenablage kopiert.");
+            _main.SetStatus("Hint copied to the clipboard.");
         }
         catch (Exception)
         {
-            _main.SetStatus("Die Zwischenablage ist gerade belegt. Bitte erneut versuchen.");
+            _main.SetStatus("The clipboard is busy. Please try again.");
         }
     }
 }

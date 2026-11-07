@@ -32,6 +32,18 @@ public sealed class AppSettings
     /// <summary>Ausgetragene Stammordner; die automatische Suche nimmt sie nicht wieder auf.</summary>
     public List<string> Ignored { get; set; } = [];
 
+    public const int DefaultBackupLimit = 50;
+    public const int MinBackupLimit = 1;
+    public const int MaxBackupLimit = 9999;
+    private int _backupLimit = DefaultBackupLimit;
+
+    /// <summary>So viele PATH-Sicherungen werden behalten (die jüngsten); ältere werden gelöscht.</summary>
+    public int BackupLimit
+    {
+        get => _backupLimit;
+        set => _backupLimit = Math.Clamp(value, MinBackupLimit, MaxBackupLimit);
+    }
+
     public IEnumerable<Installation> For(ToolKind tool) => Installations.Where(i => i.Tool == tool);
 
     public Installation? Find(ToolKind tool, string root) =>
@@ -52,11 +64,40 @@ public sealed class DataFolders
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "PythonSwitcher"));
 
     public string Root { get; }
-    public string SettingsFile => Path.Combine(Root, "einstellungen.json");
-    public string Backups => Path.Combine(Root, "Sicherungen");
+    public string SettingsFile => Path.Combine(Root, "settings.json");
+    public string Backups => Path.Combine(Root, "Backups");
     public string Downloads => Path.Combine(Root, "Downloads");
     public string Temp => Path.Combine(Root, "Temp");
     public string InstallRoot(ToolKind tool) => Path.Combine(Root, tool.ToString().ToLowerInvariant());
+
+    /// <summary>
+    /// Zieht Daten älterer (deutschsprachiger) Versionen um: einstellungen.json → settings.json,
+    /// Sicherungen\ → Backups\. Vorhandene neue Dateien werden nie überschrieben.
+    /// </summary>
+    public void MigrateLegacyNames()
+    {
+        var oldSettings = Path.Combine(Root, "einstellungen.json");
+        if (File.Exists(oldSettings) && !File.Exists(SettingsFile))
+            File.Move(oldSettings, SettingsFile);
+
+        var oldBackups = Path.Combine(Root, "Sicherungen");
+        if (!Directory.Exists(oldBackups))
+            return;
+        if (!Directory.Exists(Backups))
+        {
+            Directory.Move(oldBackups, Backups);
+            return;
+        }
+        // Beide vorhanden: alte Sicherungen einzeln übernehmen, Namenskonflikte bleiben im alten Ordner.
+        foreach (var dir in Directory.GetDirectories(oldBackups))
+        {
+            var target = Path.Combine(Backups, Path.GetFileName(dir));
+            if (!Directory.Exists(target))
+                Directory.Move(dir, target);
+        }
+        if (!Directory.EnumerateFileSystemEntries(oldBackups).Any())
+            Directory.Delete(oldBackups);
+    }
 }
 
 public sealed class SettingsStore
@@ -87,7 +128,7 @@ public sealed class SettingsStore
         catch (JsonException)
         {
             // Defekte Datei nicht überschreiben, sondern beiseitelegen.
-            var broken = _folders.SettingsFile + ".defekt-" + DateTime.Now.ToString("yyyyMMdd-HHmmss");
+            var broken = _folders.SettingsFile + ".broken-" + DateTime.Now.ToString("yyyyMMdd-HHmmss");
             File.Copy(_folders.SettingsFile, broken, overwrite: true);
             return new AppSettings();
         }

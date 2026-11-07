@@ -14,14 +14,14 @@ public sealed class InstallationRow(InstallationState state)
     public Installation Installation => state.Installation;
     public bool IsActive => state.IsActive;
     public bool Missing => state.Missing;
-    public string StatusText => state.Missing ? "fehlt" : state.IsActive ? "● aktiv" : "";
+    public string StatusText => state.Missing ? "missing" : state.IsActive ? "● active" : "";
     public string Version => state.Installation.Version;
     public string Root => state.Installation.Root;
     public string SourceText => state.Installation.Source switch
     {
-        InstallSource.Gefunden => "gefunden",
-        InstallSource.Manuell => "hinzugefügt",
-        InstallSource.Heruntergeladen => "heruntergeladen",
+        InstallSource.Gefunden => "found",
+        InstallSource.Manuell => "added",
+        InstallSource.Heruntergeladen => "downloaded",
         _ => "",
     };
 }
@@ -54,29 +54,29 @@ public partial class ToolPanel : UserControl
         WarningBox.Visibility = Visibility.Collapsed;
         if (eff.Entry is null)
         {
-            ActiveText.Text = $"Derzeit ist kein {_tool.DisplayName} aktiv.";
-            ActiveDetail.Text = $"Windows findet „{Path.GetFileNameWithoutExtension(_tool.MainExecutable)}“ über keinen PATH-Eintrag.";
+            ActiveText.Text = $"No {_tool.DisplayName} is active at the moment.";
+            ActiveDetail.Text = $"Windows does not find \"{Path.GetFileNameWithoutExtension(_tool.MainExecutable)}\" via any PATH entry.";
         }
         else if (eff.Installation is not null)
         {
-            ActiveText.Text = $"Aktiv: {_tool.DisplayName} {eff.Installation.Version}";
-            ActiveDetail.Text = $"{eff.Installation.Root}   ·   über den {ScopeName(eff.Scope)}";
+            ActiveText.Text = $"Active: {_tool.DisplayName} {eff.Installation.Version}";
+            ActiveDetail.Text = $"{eff.Installation.Root}   ·   via the {ScopeName(eff.Scope)}";
         }
         else if (_tool.IsAlwaysCompetitor(eff.Entry))
         {
-            ActiveText.Text = $"Derzeit ist kein {_tool.DisplayName} aktiv.";
-            ActiveDetail.Text = "„python“ öffnet derzeit nur die Weiterleitung zum Microsoft Store (ein Platzhalter von Windows, kein echtes Python).";
+            ActiveText.Text = $"No {_tool.DisplayName} is active at the moment.";
+            ActiveDetail.Text = "\"python\" currently only opens the Microsoft Store redirect (a Windows placeholder, not a real Python).";
         }
         else
         {
-            ActiveText.Text = $"Aktiv: eine {_tool.DisplayName}-Installation, die nicht in der Liste steht";
-            ActiveDetail.Text = $"{eff.Entry}   ·   über den {ScopeName(eff.Scope)}";
-            ShowWarning("Mit „Ordner hinzufügen …“ lässt sich diese Installation in die Liste aufnehmen.");
+            ActiveText.Text = $"Active: a {_tool.DisplayName} installation that is not in the list";
+            ActiveDetail.Text = $"{eff.Entry}   ·   via the {ScopeName(eff.Scope)}";
+            ShowWarning("Use \"Add folder …\" to add this installation to the list.");
         }
         UpdateButtons();
     }
 
-    private static string ScopeName(PathScope? scope) => scope == PathScope.System ? "System-PATH" : "Benutzer-PATH";
+    private static string ScopeName(PathScope? scope) => scope == PathScope.System ? "system PATH" : "user PATH";
 
     private void ShowWarning(string text)
     {
@@ -123,17 +123,17 @@ public partial class ToolPanel : UserControl
     {
         await RunBusy(async () =>
         {
-            _main.SetStatus($"Suche nach {_tool.DisplayName}-Installationen …");
+            _main.SetStatus($"Searching for {_tool.DisplayName} installations …");
             int added = await Task.Run(() => _switcher.Scan(_tool));
             if (!initial || added > 0)
                 _main.SetStatus(added switch
                 {
-                    0 => $"Suche abgeschlossen: keine neuen {_tool.DisplayName}-Installationen gefunden.",
-                    1 => $"Suche abgeschlossen: 1 neue {_tool.DisplayName}-Installation gefunden.",
-                    _ => $"Suche abgeschlossen: {added} neue {_tool.DisplayName}-Installationen gefunden.",
+                    0 => $"Search finished: no new {_tool.DisplayName} installations found.",
+                    1 => $"Search finished: 1 new {_tool.DisplayName} installation found.",
+                    _ => $"Search finished: {added} new {_tool.DisplayName} installations found.",
                 });
             else
-                _main.SetStatus("Bereit.");
+                _main.SetStatus("Ready.");
         });
     }
 
@@ -155,13 +155,13 @@ public partial class ToolPanel : UserControl
             if (plan.SystemConflicts.Count > 0)
             {
                 var answer = MessageBox.Show(_main,
-                    $"Im System-PATH steht ein anderer {_tool.DisplayName}-Eintrag, der immer Vorrang vor dem Benutzer-PATH hat:\n\n" +
+                    $"The system PATH contains another {_tool.DisplayName} entry, which always takes precedence over the user PATH:\n\n" +
                     string.Join("\n", plan.SystemConflicts.Select(c => "   " + c)) +
-                    $"\n\nDamit {_tool.DisplayName} {inst.Version} wirklich verwendet wird, muss der System-PATH umsortiert werden. Er gilt für alle Benutzer dieses Computers und lässt sich nur mit Administratorrechten ändern. Vorher wird eine Sicherung angelegt.\n\n" +
-                    "Ja: System-PATH umsortieren (Windows fragt nach Administratorrechten)\n" +
-                    "Nein: nur den Benutzer-PATH ändern (die andere Version bleibt dann aktiv)\n" +
-                    "Abbrechen: nichts ändern",
-                    "System-PATH ändern?", MessageBoxButton.YesNoCancel, MessageBoxImage.Question);
+                    $"\n\nFor {_tool.DisplayName} {inst.Version} to actually be used, the system PATH has to be reordered. It applies to all users of this computer and can only be changed with administrator rights. A backup is created first.\n\n" +
+                    "Yes: reorder the system PATH (Windows asks for administrator rights)\n" +
+                    "No: change only the user PATH (the other version then stays active)\n" +
+                    "Cancel: change nothing",
+                    "Change system PATH?", MessageBoxButton.YesNoCancel, MessageBoxImage.Question);
                 if (answer == MessageBoxResult.Cancel)
                     return;
                 if (answer == MessageBoxResult.Yes)
@@ -172,23 +172,23 @@ public partial class ToolPanel : UserControl
 
             if (!plan.UserChanged && !plan.SystemChanged)
             {
-                _main.SetStatus($"{_tool.DisplayName} {inst.Version} steht bereits vorn. Es war keine Änderung nötig.");
+                _main.SetStatus($"{_tool.DisplayName} {inst.Version} is already first. No change was needed.");
                 return;
             }
 
             if (!await Task.Run(() => _switcher.Apply(plan)))
             {
-                _main.SetStatus("Die Administrator-Abfrage wurde abgelehnt. Es wurde nichts geändert.");
+                _main.SetStatus("The administrator prompt was declined. Nothing was changed.");
                 return;
             }
 
             var eff = _switcher.Effective(_tool);
             if (ReferenceEquals(eff.Installation, inst))
-                _main.SetStatus($"{_tool.DisplayName} {inst.Version} ist jetzt aktiv. Das gilt für neu geöffnete Terminals und Programme.");
+                _main.SetStatus($"{_tool.DisplayName} {inst.Version} is now active. This applies to newly opened terminals and programs.");
             else if (systemDeclined)
-                _main.SetStatus($"Der Benutzer-PATH wurde geändert, aber der Eintrag im System-PATH hat weiterhin Vorrang. Aktiv bleibt: {eff.Entry}");
+                _main.SetStatus($"The user PATH was changed, but the system PATH entry still takes precedence. Still active: {eff.Entry}");
             else
-                _main.SetStatus($"Der PATH wurde geändert, aber Windows findet zuerst: {eff.Entry}");
+                _main.SetStatus($"The PATH was changed, but Windows finds this first: {eff.Entry}");
         });
     }
 
@@ -196,7 +196,7 @@ public partial class ToolPanel : UserControl
     {
         var dialog = new OpenFolderDialog
         {
-            Title = $"Ordner einer {_tool.DisplayName}-Installation wählen (der Ordner mit {_tool.MainExecutable})",
+            Title = $"Select the folder of a {_tool.DisplayName} installation (the folder containing {_tool.MainExecutable})",
         };
         if (dialog.ShowDialog(_main) != true)
             return;
@@ -205,9 +205,9 @@ public partial class ToolPanel : UserControl
             Installation? inst = null;
             var error = await Task.Run(() => _switcher.AddManual(_tool, dialog.FolderName, out inst));
             if (error is not null)
-                MessageBox.Show(_main, error, "Ordner hinzufügen", MessageBoxButton.OK, MessageBoxImage.Information);
+                MessageBox.Show(_main, error, "Add folder", MessageBoxButton.OK, MessageBoxImage.Information);
             else
-                _main.SetStatus($"{_tool.DisplayName} {inst!.Version} wurde hinzugefügt. Mit „Aktivieren“ wird sie verwendet.");
+                _main.SetStatus($"{_tool.DisplayName} {inst!.Version} was added. Use \"Activate\" to use it.");
         });
     }
 
@@ -236,18 +236,18 @@ public partial class ToolPanel : UserControl
 
         if (row.IsActive)
         {
-            MessageBox.Show(_main, $"{name} ist gerade aktiv. Bitte zuerst eine andere Version aktivieren und dann entfernen.",
-                "Entfernen", MessageBoxButton.OK, MessageBoxImage.Information);
+            MessageBox.Show(_main, $"{name} is currently active. Please activate another version first and then remove this one.",
+                "Remove", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
 
         var own = inst.Source == InstallSource.Heruntergeladen;
         var intro = MessageBox.Show(_main,
-            $"{name} aus der Liste entfernen?\n\n{inst.Root}\n\n" +
+            $"Remove {name} from the list?\n\n{inst.Root}\n\n" +
             (own
-                ? "Diese Version wurde mit PythonSwitcher heruntergeladen. Im nächsten Schritt kann sie auch gelöscht werden."
-                : "Die Dateien bleiben erhalten. Wer die Version ganz deinstallieren möchte, kann das über die Windows-Einstellungen unter „Apps“ tun."),
-            "Entfernen", MessageBoxButton.OKCancel, MessageBoxImage.Question);
+                ? "This version was downloaded with PythonSwitcher. In the next step you can also delete it."
+                : "The files are kept. To uninstall the version completely, use Windows Settings > Apps."),
+            "Remove", MessageBoxButton.OKCancel, MessageBoxImage.Question);
         if (intro != MessageBoxResult.OK)
             return;
 
@@ -255,10 +255,10 @@ public partial class ToolPanel : UserControl
         if (own && Directory.Exists(inst.Root))
         {
             var del = MessageBox.Show(_main,
-                $"Die Dateien von {name} auch löschen?\n\n{inst.Root}\n\n" +
-                "Dabei gehen auch nachträglich installierte Pakete verloren. Das lässt sich nicht rückgängig machen. " +
-                "Die PATH-Einträge dieser Version werden dann ebenfalls entfernt.",
-                "Dateien löschen?", MessageBoxButton.YesNoCancel, MessageBoxImage.Warning);
+                $"Also delete the files of {name}?\n\n{inst.Root}\n\n" +
+                "Packages installed later are lost as well. This cannot be undone. " +
+                "The PATH entries of this version are removed too.",
+                "Delete files?", MessageBoxButton.YesNoCancel, MessageBoxImage.Warning);
             if (del == MessageBoxResult.Cancel)
                 return;
             deleteFiles = del == MessageBoxResult.Yes;
@@ -276,10 +276,10 @@ public partial class ToolPanel : UserControl
             if (hasEntries && !deleteFiles)
             {
                 var answer = MessageBox.Show(_main,
-                    $"{name} hat Einträge im PATH. Sollen diese auch entfernt werden?\n\n" +
-                    "Ja: Einträge entfernen (die Version ist dann nicht mehr über den PATH erreichbar)\n" +
-                    "Nein: Einträge stehen lassen",
-                    "PATH-Einträge", MessageBoxButton.YesNoCancel, MessageBoxImage.Question);
+                    $"{name} has entries in the PATH. Remove them as well?\n\n" +
+                    "Yes: remove the entries (the version can then no longer be reached via the PATH)\n" +
+                    "No: keep the entries",
+                    "PATH entries", MessageBoxButton.YesNoCancel, MessageBoxImage.Question);
                 if (answer == MessageBoxResult.Cancel)
                     return;
                 removeEntries = answer == MessageBoxResult.Yes;
@@ -290,27 +290,27 @@ public partial class ToolPanel : UserControl
                 if (plan.SystemConflicts.Count > 0)
                 {
                     var sys = MessageBox.Show(_main,
-                        "Einige Einträge stehen im System-PATH:\n\n" + string.Join("\n", plan.SystemConflicts.Select(c => "   " + c)) +
-                        "\n\nDiese ebenfalls entfernen? Windows fragt dafür nach Administratorrechten.",
-                        "System-PATH ändern?", MessageBoxButton.YesNo, MessageBoxImage.Question);
+                        "Some entries are in the system PATH:\n\n" + string.Join("\n", plan.SystemConflicts.Select(c => "   " + c)) +
+                        "\n\nRemove these as well? Windows will ask for administrator rights.",
+                        "Change system PATH?", MessageBoxButton.YesNo, MessageBoxImage.Question);
                     if (sys == MessageBoxResult.Yes)
                         plan = planner.PlanRemoval(inst.Root, user, system, allowSystem: true);
                 }
                 if (!await Task.Run(() => _switcher.Apply(plan)))
                 {
-                    _main.SetStatus("Die Administrator-Abfrage wurde abgelehnt. Es wurde nichts geändert.");
+                    _main.SetStatus("The administrator prompt was declined. Nothing was changed.");
                     return;
                 }
             }
 
             if (deleteFiles)
             {
-                _main.SetStatus($"{name} wird gelöscht …");
+                _main.SetStatus($"Deleting {name} …");
                 await new InstallService(_switcher).DeleteDownloadedAsync(inst);
             }
 
             _switcher.Unregister(inst);
-            _main.SetStatus(deleteFiles ? $"{name} wurde entfernt und gelöscht." : $"{name} wurde aus der Liste entfernt.");
+            _main.SetStatus(deleteFiles ? $"{name} was removed and deleted." : $"{name} was removed from the list.");
         });
     }
 }

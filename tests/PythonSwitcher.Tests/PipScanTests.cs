@@ -18,14 +18,14 @@ public class PipScanTests
     {
         var items = await Fake(new(0, List, ""), new(0, Outdated, "")).ScanAsync(Py, default);
 
-        var summary = items.Single(i => i.Name == "Übersicht");
-        Assert.Equal(("3 Pakete", CheckStatus.UpdateVerfuegbar), (summary.Installed, summary.Status));
-        Assert.Contains("2 davon veraltet", summary.Hint);
+        var summary = items.Single(i => i.Name == PipScan.SummaryName);
+        Assert.Equal(("3 packages", CheckStatus.UpdateVerfuegbar), (summary.Installed, summary.Status));
+        Assert.Contains("2 of them outdated", summary.Hint);
 
         var pillow = items.Single(i => i.Name == "Pillow");
         Assert.Equal(("10.0.0", "12.1.0"), (pillow.Installed, pillow.Latest));
         Assert.Contains(@"""C:\Py312\python.exe"" -m pip install --upgrade Pillow", pillow.Hint);
-        Assert.All(items, i => Assert.Equal("pip-Pakete · Python 3.12.7", i.Group));
+        Assert.All(items, i => Assert.Equal("pip packages · Python 3.12.7", i.Group));
     }
 
     [Fact]
@@ -48,8 +48,8 @@ public class PipScanTests
         var offline = new RunResult(0, "[]", "WARNING: Retrying (Retry(total=4...)) after connection broken by 'NewConnectionError'");
         var item = (await Fake(new(0, List, ""), offline).ScanAsync(Py, default)).Single();
         Assert.Equal(CheckStatus.Unbekannt, item.Status);
-        Assert.Contains("3 Pakete", item.Hint);
-        Assert.Contains("keine Verbindung", item.Hint);
+        Assert.Contains("3 packages", item.Hint);
+        Assert.Contains("no connection", item.Hint);
     }
 
     [Fact]

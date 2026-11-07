@@ -46,7 +46,7 @@ public sealed class ElevatedSystemPathWriter : ISystemPathWriter
                 return false;
             p.WaitForExit();
             if (p.ExitCode != 0)
-                throw new InvalidOperationException($"Der System-PATH konnte nicht geschrieben werden (Code {p.ExitCode}).");
+                throw new InvalidOperationException($"The system PATH could not be written (code {p.ExitCode}).");
             return true;
         }
         catch (Win32Exception ex) when (ex.NativeErrorCode == 1223)
@@ -93,16 +93,48 @@ public sealed class Switcher
     private readonly Discovery _discovery;
     private readonly Func<string, bool> _fileExists;
 
-    public Switcher(DataFolders folders, IPathStore paths, ISystemPathWriter systemWriter, Func<string, bool>? fileExists = null)
+    private readonly Func<string, bool> _directoryExists;
+
+    public Switcher(DataFolders folders, IPathStore paths, ISystemPathWriter systemWriter,
+        Func<string, bool>? fileExists = null, Func<string, bool>? directoryExists = null)
     {
         Folders = folders;
         _paths = paths;
         _systemWriter = systemWriter;
+        try
+        {
+            folders.MigrateLegacyNames();
+        }
+        catch (IOException)
+        {
+            // Umzug gescheitert (z. B. Datei gesperrt): mit den neuen Namen weiterarbeiten, beim nächsten Start erneut versuchen.
+        }
         _store = new SettingsStore(folders);
         _backups = new PathBackups(folders.Backups);
         _discovery = new Discovery(paths, folders);
         _fileExists = fileExists ?? File.Exists;
+        _directoryExists = directoryExists ?? Directory.Exists;
         Settings = _store.Load();
+    }
+
+    /// <summary>Legt eine Sicherung an und löscht danach die ältesten über der eingestellten Grenze.</summary>
+    private void Backup(string? user, string? system)
+    {
+        _backups.Save(user, system);
+        _backups.Prune(Settings.BackupLimit);
+    }
+
+    public int BackupCount => _backups.All().Count;
+
+    /// <summary>Wie viele Sicherungen beim Senken auf diese Grenze gelöscht würden.</summary>
+    public int BackupsToDelete(int newLimit) => _backups.CountExcess(Math.Clamp(newLimit, AppSettings.MinBackupLimit, AppSettings.MaxBackupLimit));
+
+    /// <summary>Speichert die Grenze und löscht sofort überzählige Sicherungen. Liefert die Anzahl gelöschter.</summary>
+    public int SetBackupLimit(int limit)
+    {
+        Settings.BackupLimit = limit;
+        _store.Save(Settings);
+        return _backups.Prune(Settings.BackupLimit);
     }
 
     public DataFolders Folders { get; }
@@ -148,15 +180,15 @@ public sealed class Switcher
         installation = null;
         var root = tool.FindRoot(folder, _fileExists);
         if (root is null)
-            return $"In diesem Ordner wurde kein {tool.DisplayName} gefunden (gesucht: {tool.MainExecutable}).";
+            return $"No {tool.DisplayName} was found in this folder (looked for: {tool.MainExecutable}).";
         if (Settings.Find(tool.Kind, root) is { } existing)
         {
             installation = existing;
-            return $"Diese Installation steht bereits in der Liste ({existing.Version}).";
+            return $"This installation is already in the list ({existing.Version}).";
         }
         var version = VersionProbe.Read(tool, root);
         if (version is null)
-            return $"{tool.MainExecutable} wurde gefunden, ließ sich aber nicht starten oder lieferte keine Versionsnummer.";
+            return $"{tool.MainExecutable} was found but could not be started or did not report a version number.";
 
         Settings.Ignored.RemoveAll(r => PathUtil.SameDirectory(r, root));
         installation = new Installation { Tool = tool.Kind, Root = root, Version = version, Source = InstallSource.Manuell };
@@ -219,13 +251,13 @@ public sealed class Switcher
 
         var currentUser = _paths.Read(PathScope.Benutzer);
         var currentSystem = _paths.Read(PathScope.System);
-        _backups.Save(plan.UserChanged ? currentUser : null, plan.SystemChanged ? currentSystem : null);
+        Backup(plan.UserChanged ? currentUser : null, plan.SystemChanged ? currentSystem : null);
 
         if (plan.SystemChanged)
         {
             var newSystem = PathUtil.Join(plan.System);
             if (string.IsNullOrWhiteSpace(newSystem))
-                throw new InvalidOperationException("Der neue System-PATH wäre leer. Der Vorgang wurde abgebrochen.");
+                throw new InvalidOperationException("The new system PATH would be empty. The operation was cancelled.");
             if (!_systemWriter.Write(newSystem))
                 return false;
         }
@@ -236,28 +268,82 @@ public sealed class Switcher
 
     public PathBackup? LatestBackup() => _backups.Latest();
 
-    /// <summary>Spielt die letzte Sicherung zurück (vorher wird der aktuelle Stand ebenfalls gesichert).</summary>
-    public bool RestoreLatest()
+    /// <summary>
+    /// Plant das Zurückspielen der letzten Sicherung. Ermittelt dabei Einträge, die dadurch neu in den PATH kämen,
+    /// deren Ordner es aber nicht mehr gibt (z. B. weil die Version inzwischen gelöscht wurde).
+    /// Tote Einträge, die schon jetzt im PATH stehen, zählen nicht dazu.
+    /// </summary>
+    public RestorePlan? PlanRestore()
     {
-        var backup = _backups.Latest() ?? throw new InvalidOperationException("Es gibt noch keine Sicherung.");
-        var plan = new PathPlan
-        {
-            User = PathUtil.Split(backup.User ?? _paths.Read(PathScope.Benutzer)),
-            System = PathUtil.Split(backup.System ?? _paths.Read(PathScope.System)),
-            UserChanged = backup.User is not null && backup.User != _paths.Read(PathScope.Benutzer),
-            SystemChanged = backup.System is not null && backup.System != _paths.Read(PathScope.System),
-        };
-        if (!plan.UserChanged && !plan.SystemChanged)
-            return true;
-
-        // Rohwert unverändert zurückschreiben (auch leere Einträge), daher nicht über Apply/Join.
+        var backup = _backups.Latest();
+        if (backup is null)
+            return null;
         var currentUser = _paths.Read(PathScope.Benutzer);
         var currentSystem = _paths.Read(PathScope.System);
-        _backups.Save(plan.UserChanged ? currentUser : null, plan.SystemChanged ? currentSystem : null);
-        if (plan.SystemChanged && !_systemWriter.Write(backup.System!))
+
+        List<string> Dead(string? restored, string current)
+        {
+            if (restored is null)
+                return [];
+            var now = PathUtil.Split(current);
+            return PathUtil.Split(restored)
+                .Where(e => !now.Any(n => PathUtil.SameDirectory(n, e)))
+                .Where(e => !_directoryExists(PathUtil.Expand(e)))
+                .Distinct(StringComparer.Ordinal)
+                .ToList();
+        }
+
+        return new RestorePlan(backup,
+            Dead(backup.User, currentUser),
+            Dead(backup.System, currentSystem),
+            backup.User is not null && backup.User != currentUser,
+            backup.System is not null && backup.System != currentSystem);
+    }
+
+    /// <summary>
+    /// Spielt die letzte Sicherung zurück (vorher wird der aktuelle Stand ebenfalls gesichert).
+    /// Mit omitDead werden die im Plan gefundenen toten Einträge weggelassen. Liefert false bei abgelehnter UAC-Abfrage.
+    /// </summary>
+    public bool RestoreLatest(bool omitDead = true)
+    {
+        var plan = PlanRestore() ?? throw new InvalidOperationException("There is no backup yet.");
+        var user = plan.Backup.User is null ? null : omitDead ? Without(plan.Backup.User, plan.DeadUser) : plan.Backup.User;
+        var system = plan.Backup.System is null ? null : omitDead ? Without(plan.Backup.System, plan.DeadSystem) : plan.Backup.System;
+
+        var currentUser = _paths.Read(PathScope.Benutzer);
+        var currentSystem = _paths.Read(PathScope.System);
+        bool userChanged = user is not null && user != currentUser;
+        bool systemChanged = system is not null && system != currentSystem;
+        if (!userChanged && !systemChanged)
+            return true;
+        if (systemChanged && string.IsNullOrWhiteSpace(system))
+            throw new InvalidOperationException("The restored system PATH would be empty. The operation was cancelled.");
+
+        // Rohwert zurückschreiben (Schreibweise und leere Einträge bleiben erhalten), daher nicht über Apply/Join.
+        Backup(userChanged ? currentUser : null, systemChanged ? currentSystem : null);
+        if (systemChanged && !_systemWriter.Write(system!))
             return false;
-        if (plan.UserChanged)
-            _paths.Write(PathScope.Benutzer, backup.User!);
+        if (userChanged)
+            _paths.Write(PathScope.Benutzer, user!);
         return true;
     }
+
+    /// <summary>Entfernt die genannten Einträge aus einem rohen PATH-Wert; alles andere bleibt zeichengenau erhalten.</summary>
+    internal static string Without(string raw, IReadOnlyCollection<string> remove)
+    {
+        if (remove.Count == 0)
+            return raw;
+        return string.Join(";", raw.Split(';').Where(e => !remove.Contains(e)));
+    }
+}
+
+/// <summary>Was beim Zurückspielen der letzten Sicherung passieren würde.</summary>
+public sealed record RestorePlan(
+    PathBackup Backup,
+    IReadOnlyList<string> DeadUser,
+    IReadOnlyList<string> DeadSystem,
+    bool UserChanged,
+    bool SystemChanged)
+{
+    public bool HasDead => DeadUser.Count > 0 || DeadSystem.Count > 0;
 }

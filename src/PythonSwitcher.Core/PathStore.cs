@@ -27,10 +27,10 @@ public sealed class RegistryPathStore : IPathStore
     public void Write(PathScope scope, string value)
     {
         if (value.Contains('\n') || value.Contains('\r') || value.Contains('\0'))
-            throw new ArgumentException("Der PATH-Wert enthält unzulässige Zeichen.");
+            throw new ArgumentException("The PATH value contains invalid characters.");
 
         using var key = Open(scope, writable: true)
-            ?? throw new InvalidOperationException("Der Registry-Schlüssel für den PATH fehlt.");
+            ?? throw new InvalidOperationException("The registry key for PATH is missing.");
 
         // Art des Werts beibehalten (REG_SZ oder REG_EXPAND_SZ); neu angelegt wird REG_EXPAND_SZ.
         var kind = key.GetValueNames().Contains("Path", StringComparer.OrdinalIgnoreCase)

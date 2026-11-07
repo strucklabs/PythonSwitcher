@@ -18,7 +18,7 @@ public partial class App : Application
 
         DispatcherUnhandledException += (_, args) =>
         {
-            MessageBox.Show(args.Exception.Message, "PythonSwitcher – Fehler", MessageBoxButton.OK, MessageBoxImage.Error);
+            MessageBox.Show(args.Exception.Message, "PythonSwitcher – Error", MessageBoxButton.OK, MessageBoxImage.Error);
             args.Handled = true;
         };
 

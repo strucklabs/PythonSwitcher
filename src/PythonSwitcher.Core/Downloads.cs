@@ -135,7 +135,7 @@ public static class Downloader
     public static async Task DownloadAsync(AvailableRelease release, string target, IProgress<double>? progress, CancellationToken ct)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(target)!);
-        var part = target + ".teil";
+        var part = target + ".part";
         using var hash = release.Sha256 is not null
             ? IncrementalHash.CreateHash(HashAlgorithmName.SHA256)
             : IncrementalHash.CreateHash(HashAlgorithmName.MD5);
@@ -165,7 +165,7 @@ public static class Downloader
             var actual = Convert.ToHexStringLower(hash.GetHashAndReset());
             if (actual != expected)
                 throw new InvalidDataException(
-                    $"Die Prüfsumme der heruntergeladenen Datei stimmt nicht (erwartet {expected}, erhalten {actual}). Die Datei wurde verworfen.");
+                    $"The checksum of the downloaded file does not match (expected {expected}, got {actual}). The file was discarded.");
             File.Move(part, target, overwrite: true);
         }
         finally
@@ -189,14 +189,14 @@ public static class SignatureCheck
     {
         int rc = WinVerify(file);
         if (rc != 0)
-            throw new InvalidDataException($"Die digitale Signatur der Datei ist ungültig (Code 0x{rc:X8}). Die Datei wird nicht ausgeführt.");
+            throw new InvalidDataException($"The digital signature of the file is invalid (code 0x{rc:X8}). The file will not be run.");
 
 #pragma warning disable SYSLIB0057
         using var cert = new X509Certificate2(X509Certificate.CreateFromSignedFile(file));
 #pragma warning restore SYSLIB0057
         var cn = cert.GetNameInfo(X509NameType.SimpleName, forIssuer: false);
         if (!string.Equals(cn, expectedSigner, StringComparison.Ordinal))
-            throw new InvalidDataException($"Die Datei ist von „{cn}“ signiert, erwartet war „{expectedSigner}“. Die Datei wird nicht ausgeführt.");
+            throw new InvalidDataException($"The file is signed by \"{cn}\", expected \"{expectedSigner}\". The file will not be run.");
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -275,7 +275,7 @@ public static class Installers
         try
         {
             using var key = Registry.CurrentUser.OpenSubKey($@"Software\Python\PythonCore\{tag}\InstallPath");
-            return key?.GetValue(null) as string ?? (key is null ? null : "(Ordner unbekannt)");
+            return key?.GetValue(null) as string ?? (key is null ? null : "(folder unknown)");
         }
         catch (Exception)
         {
@@ -349,12 +349,12 @@ public static class Installers
 
     public static string DescribePythonExitCode(int exitCode) => exitCode switch
     {
-        0 => "Erfolgreich.",
-        3010 => "Erfolgreich, ein Neustart wird empfohlen.",
-        1602 => "Der Vorgang wurde abgebrochen.",
-        1618 => "Eine andere Installation läuft gerade. Bitte später erneut versuchen.",
-        1638 => "Diese Python-Version ist bereits installiert.",
-        _ => $"Fehlercode {exitCode}. Details stehen in der Protokolldatei.",
+        0 => "Success.",
+        3010 => "Success; a restart is recommended.",
+        1602 => "The operation was cancelled.",
+        1618 => "Another installation is in progress. Please try again later.",
+        1638 => "This Python version is already installed.",
+        _ => $"Error code {exitCode}. See the log file for details.",
     };
 
     private static Task<int> RunAsync(string exe, IEnumerable<string> args, CancellationToken ct)
@@ -367,7 +367,7 @@ public static class Installers
 
     private static async Task<int> RunAsync(ProcessStartInfo psi, CancellationToken ct)
     {
-        using var p = Process.Start(psi) ?? throw new InvalidOperationException("Das Programm konnte nicht gestartet werden.");
+        using var p = Process.Start(psi) ?? throw new InvalidOperationException("The program could not be started.");
         await p.WaitForExitAsync(ct);
         return p.ExitCode;
     }
