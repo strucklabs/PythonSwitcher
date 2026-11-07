@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/PythonSwitcher.Core/PythonSwitcher.Core.csproj" />
+    <Project Path="src/PythonSwitcher/PythonSwitcher.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/PythonSwitcher.Tests/PythonSwitcher.Tests.csproj" />
+  </Folder>
+</Solution>
