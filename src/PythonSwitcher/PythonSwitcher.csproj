@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
     <ProjectReference Include="..\PythonSwitcher.Core\PythonSwitcher.Core.csproj" />
@@ -10,6 +10,31 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
+    <Version>0.1.0</Version>
   </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Nur für das Weitergabe-Paket, nicht für den normalen Build -->
+    <None Include="LIESMICH.txt" CopyToOutputDirectory="Never" CopyToPublishDirectory="Always" ExcludeFromSingleFile="true" />
+  </ItemGroup>
+
+  <!--
+    Weitergabe-Paket: dotnet publish src\PythonSwitcher -p:PublishProfile=Dist
+    Danach liegt PythonSwitcher.zip (Ordner PythonSwitcher\ mit EXE und LIESMICH.txt) auf dem Desktop.
+  -->
+  <PropertyGroup>
+    <DistDesktop>$([System.Environment]::GetFolderPath(SpecialFolder.DesktopDirectory))</DistDesktop>
+    <DistStage>$(BaseIntermediateOutputPath)dist\</DistStage>
+  </PropertyGroup>
+
+  <Target Name="DistZipToDesktop" AfterTargets="Publish" Condition="'$(DistZip)' == 'true'">
+    <ItemGroup>
+      <DistFiles Include="$(PublishDir)PythonSwitcher.exe;$(PublishDir)LIESMICH.txt" />
+    </ItemGroup>
+    <RemoveDir Directories="$(DistStage)" />
+    <Copy SourceFiles="@(DistFiles)" DestinationFolder="$(DistStage)PythonSwitcher\" />
+    <ZipDirectory SourceDirectory="$(DistStage)" DestinationFile="$(DistDesktop)\PythonSwitcher.zip" Overwrite="true" />
+    <Message Importance="high" Text="Weitergabe-Paket: $(DistDesktop)\PythonSwitcher.zip" />
+  </Target>
 
 </Project>

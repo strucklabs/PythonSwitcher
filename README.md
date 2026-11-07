@@ -37,3 +37,13 @@ Kleines Windows-Programm (WPF, .NET 10) zum Verwalten mehrerer Python- und Git-I
 dotnet test
 dotnet run --project src/PythonSwitcher
 ```
+
+## Weitergabe-Paket
+
+```
+dotnet publish src/PythonSwitcher -p:PublishProfile=Dist
+```
+
+Baut eine eigenständige Einzeldatei-EXE (win-x64, läuft ohne installiertes .NET) und legt
+`PythonSwitcher.zip` (Ordner `PythonSwitcher\` mit EXE und `LIESMICH.txt`) **auf dem Desktop** ab;
+eine vorhandene ZIP wird überschrieben.

@@ -480,3 +480,6 @@ $RECYCLE.BIN/
 
 # Vim temporary swap files
 *.swp
+
+# Weitergabe-Profil (ZIP auf den Desktop) gehört ins Repo
+!src/PythonSwitcher/Properties/PublishProfiles/Dist.pubxml
