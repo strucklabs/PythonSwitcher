@@ -51,19 +51,35 @@ public sealed class PipScan
         }
 
         var old = ParseList(outdated.Out).Where(p => p.Latest is not null).ToList();
-        var sorted = old.OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase).ToList();
-        result.Add(new CheckItem(CheckCategory.PipPaket, group, SummaryName, $"{installed.Count} packages", null,
+        var oldNames = old.Select(p => NormalizeName(p.Name)).ToHashSet();
+        var outdatedSorted = old.OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase).ToList();
+        int current = installed.Count(p => !oldNames.Contains(NormalizeName(p.Name)));
+        result.Add(new CheckItem(CheckCategory.PipPaket, group, SummaryName, $"{installed.Count} installed", null,
             old.Count == 0 ? CheckStatus.Aktuell : CheckStatus.UpdateVerfuegbar,
-            old.Count == 0 ? "All packages are up to date." : $"{old.Count} of them outdated. The update command updates all of them.",
+            old.Count == 0
+                ? $"All {installed.Count} packages are up to date."
+                : $"{old.Count} of {installed.Count} packages are outdated, {current} up to date. The update command updates all outdated ones.",
             null, inst.Root,
-            old.Count == 0 ? null : UpgradeCommand(python, sorted.Select(p => p.Name)),
+            old.Count == 0 ? null : UpgradeCommand(python, outdatedSorted.Select(p => p.Name)),
             summaryTarget));
-        foreach (var p in sorted)
+
+        // Alle Pakete alphabetisch: veraltete mit neuer Version, aktuelle mit ihrer installierten Version
+        // (pip hat für diese Python-Version nichts Neueres gefunden).
+        var latestByName = old.ToDictionary(p => NormalizeName(p.Name), p => p.Latest!);
+        foreach (var p in installed.OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase))
         {
-            var cmd = UpgradeCommand(python, [p.Name]);
-            result.Add(new CheckItem(CheckCategory.PipPaket, group, p.Name, p.Version, p.Latest, CheckStatus.UpdateVerfuegbar,
-                "Update: " + cmd, null, inst.Root, cmd,
-                new CheckTarget(TargetKind.PipPackage, ToolKind.Python, inst.Root, Package: p.Name)));
+            var target = new CheckTarget(TargetKind.PipPackage, ToolKind.Python, inst.Root, Package: p.Name);
+            if (latestByName.TryGetValue(NormalizeName(p.Name), out var latest))
+            {
+                var cmd = UpgradeCommand(python, [p.Name]);
+                result.Add(new CheckItem(CheckCategory.PipPaket, group, p.Name, p.Version, latest, CheckStatus.UpdateVerfuegbar,
+                    "Update: " + cmd, null, inst.Root, cmd, target));
+            }
+            else
+            {
+                result.Add(new CheckItem(CheckCategory.PipPaket, group, p.Name, p.Version, p.Version, CheckStatus.Aktuell,
+                    "", null, inst.Root, Target: target));
+            }
         }
         return result;
     }

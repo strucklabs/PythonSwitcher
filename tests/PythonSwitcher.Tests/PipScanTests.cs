@@ -19,8 +19,9 @@ public class PipScanTests
         var items = await Fake(new(0, List, ""), new(0, Outdated, "")).ScanAsync(Py, default);
 
         var summary = items.Single(i => i.Name == PipScan.SummaryName);
-        Assert.Equal(("3 packages", CheckStatus.UpdateVerfuegbar), (summary.Installed, summary.Status));
-        Assert.Contains("2 of them outdated", summary.Hint);
+        Assert.Equal(("3 installed", CheckStatus.UpdateVerfuegbar), (summary.Installed, summary.Status));
+        Assert.Contains("2 of 3 packages are outdated, 1 up to date", summary.Hint);
+        Assert.Equal(@"""C:\Py312\python.exe"" -m pip install --upgrade Pillow pip", summary.UpdateCommand);
 
         var pillow = items.Single(i => i.Name == "Pillow");
         Assert.Equal(("10.0.0", "12.1.0"), (pillow.Installed, pillow.Latest));
@@ -29,10 +30,24 @@ public class PipScanTests
     }
 
     [Fact]
-    public async Task All_current_gives_single_summary()
+    public async Task Up_to_date_packages_are_listed_too()
+    {
+        var items = await Fake(new(0, List, ""), new(0, Outdated, "")).ScanAsync(Py, default);
+        // Übersicht + alle 3 Pakete; Summe der Zeilen passt zur Zahl in der Übersicht
+        Assert.Equal(["Summary", "Pillow", "pip", "requests"], items.Select(i => i.Name)); // alphabetisch, Groß/klein egal
+        var requests = items.Single(i => i.Name == "requests");
+        Assert.Equal(("2.31.0", "2.31.0", CheckStatus.Aktuell), (requests.Installed, requests.Latest, requests.Status));
+        Assert.Null(requests.UpdateCommand);
+        Assert.Equal(TargetKind.PipPackage, requests.Target?.Kind); // auch einzeln neu prüfbar
+    }
+
+    [Fact]
+    public async Task All_current_lists_every_package_as_up_to_date()
     {
         var items = await Fake(new(0, List, ""), new(0, "[]", "")).ScanAsync(Py, default);
-        Assert.Equal(CheckStatus.Aktuell, items.Single().Status);
+        Assert.Equal(4, items.Count);
+        Assert.All(items, i => Assert.Equal(CheckStatus.Aktuell, i.Status));
+        Assert.Equal("All 3 packages are up to date.", items[0].Hint);
     }
 
     [Fact]

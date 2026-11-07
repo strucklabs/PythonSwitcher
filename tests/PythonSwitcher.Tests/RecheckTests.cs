@@ -105,7 +105,8 @@ public class RecheckTests
         var summary = (await Run(checker)).Single(i => i.Name == PipScan.SummaryName);
         m.PipOutdated = "[]";
         var rows = await checker.RecheckAsync(summary, Installed(), default);
-        Assert.Equal(CheckStatus.Aktuell, rows.Single().Status);
+        Assert.All(rows, r => Assert.Equal(CheckStatus.Aktuell, r.Status));
+        Assert.Equal([PipScan.SummaryName, "Pillow"], rows.Select(r => r.Name));
     }
 
     [Fact]
