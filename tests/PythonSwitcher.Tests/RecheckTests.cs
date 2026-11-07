@@ -36,7 +36,10 @@ public class RecheckTests
         public VersionChecker Checker() => new(new FakePathStore(),
             winget: _ => Task.FromResult<List<WingetPackage>?>(Winget.ToList()),
             probe: (_, root) => Versions.GetValueOrDefault(root),
-            pip: new PipScan((_, args, _, _) => Task.FromResult<RunResult?>(new(0, args.Contains("--outdated") ? PipOutdated : PipList, ""))),
+            pip: new PipScan((_, args, _, _) => Task.FromResult<RunResult?>(new(0,
+                args.Contains("check") ? "No broken requirements found."
+                : args.Contains("--dry-run") ? "Would install Pillow-12.1.0"
+                : args.Contains("--outdated") ? PipOutdated : PipList, ""))),
             toolScan: roots => new ToolScan(_ => null, (_, _) => null, (_, _) => Task.FromResult<string?>(null), roots),
             catalogs: _ => Task.FromResult(Catalogs()),
             fileExists: _ => true);
@@ -106,7 +109,7 @@ public class RecheckTests
         m.PipOutdated = "[]";
         var rows = await checker.RecheckAsync(summary, Installed(), default);
         Assert.All(rows, r => Assert.Equal(CheckStatus.Aktuell, r.Status));
-        Assert.Equal([PipScan.SummaryName, "Pillow"], rows.Select(r => r.Name));
+        Assert.Equal([PipScan.SummaryName, PipScan.DependenciesName, "Pillow"], rows.Select(r => r.Name));
     }
 
     [Fact]

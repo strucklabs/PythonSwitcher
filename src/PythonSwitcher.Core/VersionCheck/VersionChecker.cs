@@ -173,6 +173,7 @@ public sealed class VersionChecker
 
             case TargetKind.PipPackage:
             case TargetKind.PipSummary:
+            case TargetKind.PipCheck:
             {
                 var inst = Fresh(installations.Where(i => PathUtil.SameDirectory(i.Root, target.Root!)), ToolKind.Python).FirstOrDefault();
                 if (inst is null)
@@ -183,14 +184,38 @@ public sealed class VersionChecker
                         Hint = "This Python installation is no longer available.",
                     }];
                 }
-                return target.Kind == TargetKind.PipPackage
-                    ? [await _pip.RecheckPackageAsync(item, inst, ct)]
-                    : await _pip.ScanAsync(inst, ct);
+                return target.Kind switch
+                {
+                    TargetKind.PipPackage => [await _pip.RecheckPackageAsync(item, inst, ct)],
+                    TargetKind.PipCheck => await _pip.DependencyRowsAsync(inst, ct),
+                    _ => await _pip.ScanAsync(inst, ct),
+                };
             }
 
             default:
                 throw new InvalidOperationException("This entry cannot be checked individually.");
         }
+    }
+
+    /// <summary>
+    /// Trockenlauf für eine Paketzeile oder die Übersicht (alle Pakete mit neuerer Version) einer Python-Version.
+    /// Es wird nichts installiert.
+    /// </summary>
+    public async Task<PipScan.DryRunResult> DryRunAsync(CheckItem item, IEnumerable<CheckItem> groupRows,
+        IReadOnlyList<Installation> installations, CancellationToken ct)
+    {
+        var target = item.Target ?? throw new InvalidOperationException("No dry run is available for this entry.");
+        var inst = Fresh(installations.Where(i => PathUtil.SameDirectory(i.Root, target.Root ?? "")), ToolKind.Python).FirstOrDefault()
+                   ?? throw new InvalidOperationException("This Python installation is no longer available.");
+        var wanted = target.Kind == TargetKind.PipPackage
+            ? new Dictionary<string, string?> { [target.Package ?? item.Name] = item.Latest }
+            : groupRows
+                .Where(r => r.Target?.Kind == TargetKind.PipPackage && r.Latest is not null
+                            && VersionCompare.Compare(r.Installed, r.Latest) < 0)
+                .ToDictionary(r => r.Target!.Package ?? r.Name, r => r.Latest);
+        if (wanted.Count == 0)
+            return new PipScan.DryRunResult([], new Dictionary<string, string>(), "There is nothing to update.");
+        return await _pip.DryRunAsync(inst, wanted, ct);
     }
 
     private static async Task<T?> Try<T>(Func<Task<T>> f, CancellationToken ct) where T : class

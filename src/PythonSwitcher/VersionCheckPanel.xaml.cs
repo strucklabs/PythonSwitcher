@@ -25,12 +25,14 @@ public sealed class CheckRow(CheckItem item)
         CheckStatus.UpdateVerfuegbar => "update available",
         CheckStatus.Aktuell => "up to date",
         CheckStatus.Unbekannt => "unknown",
+        CheckStatus.Problem => "conflict",
         _ => "note",
     };
 
     public Brush StatusBrush => item.Status switch
     {
         CheckStatus.UpdateVerfuegbar => new SolidColorBrush(Color.FromRgb(0xB3, 0x5A, 0x00)),
+        CheckStatus.Problem => new SolidColorBrush(Color.FromRgb(0xC6, 0x28, 0x28)),
         CheckStatus.Aktuell => new SolidColorBrush(Color.FromRgb(0x2E, 0x7D, 0x32)),
         CheckStatus.Hinweis => new SolidColorBrush(Color.FromRgb(0x15, 0x65, 0xC0)),
         _ => Brushes.Gray,
@@ -83,9 +85,11 @@ public partial class VersionCheckPanel : UserControl
             ApplyFilter();
             TakeOverVersions(items);
             int updates = _rows.Count(r => r.IsUpdate && r.Item.Category != CheckCategory.PipPaket);
-            int pipUpdates = _rows.Count(r => r.IsUpdate && r.Item.Category == CheckCategory.PipPaket && r.Name != PipScan.SummaryName);
+            int pipUpdates = _rows.Count(r => r.IsUpdate && r.Item.Target?.Kind == TargetKind.PipPackage);
+            int problems = _rows.Count(r => r.Item.Status == CheckStatus.Problem && r.Name != PipScan.DependenciesName);
             var text = $"Checked on {started.ToString(MainWindow.TimeFormat)} ({(DateTime.Now - started).TotalSeconds:0} s): " +
-                       $"{updates} program(s) with updates, {pipUpdates} outdated pip package(s).";
+                       $"{updates} program(s) with updates, {pipUpdates} outdated pip package(s)" +
+                       (problems > 0 ? $", {problems} dependency problem(s)." : ".");
             ProgressText.Text = text;
             _main.SetStatus("Version check finished. " + text);
         }
@@ -131,6 +135,20 @@ public partial class VersionCheckPanel : UserControl
             Replace(item, replacement);
             TakeOverVersions(replacement);
 
+            if (item.Target!.Kind == TargetKind.PipPackage)
+            {
+                // Übersicht dieser Python-Version an die neuen Zahlen anpassen
+                RefreshSummary(item.Target.Root!);
+                // Ein Update kann Abhängigkeiten brechen oder reparieren: pip check für diese Version wiederholen
+                if (_rows.FirstOrDefault(r => r.Item.Target is { Kind: TargetKind.PipCheck } t
+                        && PathUtil.SameDirectory(t.Root ?? "", item.Target.Root!)) is { } deps)
+                {
+                    ProgressText.Text = "Checking dependencies again …";
+                    var depsItem = deps.Item;
+                    Replace(depsItem, await Task.Run(() => _checker.RecheckAsync(depsItem, snapshot, token), token));
+                }
+            }
+
             var main = replacement.FirstOrDefault(r => r.Name == item.Name) ?? replacement.FirstOrDefault();
             var result = main is null ? "no result"
                 : main.Status switch
@@ -163,8 +181,8 @@ public partial class VersionCheckPanel : UserControl
     {
         var key = old.Target!.ReplaceKey;
         bool Matches(CheckRow r) => r.Item.Target is { } t && (t.ReplaceKey == key
-            // Neuprüfung der pip-Übersicht ersetzt auch die einzelnen Paketzeilen dieser Python-Version
-            || (old.Target.Kind == TargetKind.PipSummary && t.Kind == TargetKind.PipPackage
+            // Neuprüfung der pip-Übersicht ersetzt alle Zeilen dieser Python-Version (Pakete und Abhängigkeiten)
+            || (old.Target.Kind == TargetKind.PipSummary && t.Kind is TargetKind.PipPackage or TargetKind.PipCheck
                 && PathUtil.SameDirectory(t.Root ?? "", old.Target.Root ?? "")));
 
         int index = _rows.FindIndex(Matches);
@@ -172,6 +190,18 @@ public partial class VersionCheckPanel : UserControl
             index = _rows.Count;
         _rows.RemoveAll(Matches);
         _rows.InsertRange(Math.Min(index, _rows.Count), replacement.Select(i => new CheckRow(i)));
+        ApplyFilter();
+    }
+
+    /// <summary>Baut die Übersichtszeile der pip-Pakete einer Python-Version aus den aktuellen Zeilen neu auf.</summary>
+    private void RefreshSummary(string root)
+    {
+        bool SameRoot(CheckRow r) => PathUtil.SameDirectory(r.Item.Target?.Root ?? "", root);
+        int index = _rows.FindIndex(r => r.Item.Target?.Kind == TargetKind.PipSummary && r.Name == PipScan.SummaryName && SameRoot(r));
+        if (index < 0)
+            return;
+        var updated = PipScan.UpdateSummary(_rows[index].Item, _rows.Where(SameRoot).Select(r => r.Item));
+        _rows[index] = new CheckRow(updated);
         ApplyFilter();
     }
 
@@ -186,17 +216,73 @@ public partial class VersionCheckPanel : UserControl
     private void ApplyFilter()
     {
         var rows = OnlyUpdates.IsChecked == true
-            ? _rows.Where(r => r.IsUpdate || r.Item.Status == CheckStatus.Hinweis).ToList()
+            ? _rows.Where(r => r.IsUpdate || r.Item.Status is CheckStatus.Hinweis or CheckStatus.Problem).ToList()
             : _rows.ToList();
         var view = new ListCollectionView(rows);
         view.GroupDescriptions.Add(new PropertyGroupDescription(nameof(CheckRow.Group)));
         List.ItemsSource = view;
     }
 
+    /// <summary>Pakete mit neuerer Version in derselben Python-Version (für den Trockenlauf der Übersicht).</summary>
+    private List<CheckItem> GroupRows(CheckItem item) => _rows
+        .Where(r => PathUtil.SameDirectory(r.Item.Target?.Root ?? "", item.Target?.Root ?? "-"))
+        .Select(r => r.Item).ToList();
+
+    private bool CanDryRun(CheckItem? item)
+    {
+        if (item?.Target is not { } t || item.Hint.Contains("Not updatable with pip"))
+            return false;
+        if (t.Kind == TargetKind.PipPackage)
+            return item.Latest is not null && VersionCompare.Compare(item.Installed, item.Latest) < 0;
+        if (t.Kind == TargetKind.PipSummary && item.Name == PipScan.SummaryName)
+            return GroupRows(item).Any(r => r.Target?.Kind == TargetKind.PipPackage && r.Latest is not null
+                                            && VersionCompare.Compare(r.Installed, r.Latest) < 0
+                                            && !r.Hint.Contains("Not updatable with pip"));
+        return false;
+    }
+
+    private async void DryRun_Click(object sender, RoutedEventArgs e)
+    {
+        if (_busy || List.SelectedItem is not CheckRow row || !CanDryRun(row.Item))
+            return;
+        _cts = new CancellationTokenSource();
+        SetBusy(true);
+        ProgressText.Text = $"Dry run for \"{row.Name}\" – pip resolves the update without installing anything. " +
+                            "This can take a while for many packages …";
+        try
+        {
+            var item = row.Item;
+            var groupRows = GroupRows(item);
+            var snapshot = Snapshot();
+            var token = _cts.Token;
+            var result = await Task.Run(() => _checker.DryRunAsync(item, groupRows, snapshot, token), token);
+            var text = PipScan.DescribeDryRun(result);
+            ProgressText.Text = $"Dry run for \"{row.Name}\" finished at {DateTime.Now.ToString(MainWindow.TimeFormat)}. Nothing was installed.";
+            MessageBox.Show(_main, text, $"Dry run – {row.Group}", MessageBoxButton.OK,
+                result.Error is not null || result.NotInstallable.Count > 0 || result.Changes.Any(c => c.Kind == PipScan.ChangeKind.Downgrade)
+                    ? MessageBoxImage.Warning : MessageBoxImage.Information);
+        }
+        catch (OperationCanceledException)
+        {
+            ProgressText.Text = "Cancelled.";
+        }
+        catch (Exception ex)
+        {
+            ProgressText.Text = $"Error during the dry run: {ex.Message}";
+        }
+        finally
+        {
+            SetBusy(false);
+            _cts.Dispose();
+            _cts = null;
+        }
+    }
+
     private void List_ContextMenuOpening(object sender, ContextMenuEventArgs e)
     {
         var row = List.SelectedItem as CheckRow;
         RecheckItem.IsEnabled = !_busy && row?.Item.Target is not null;
+        DryRunItem.IsEnabled = !_busy && CanDryRun(row?.Item);
         CopyCommandItem.IsEnabled = !string.IsNullOrEmpty(row?.Item.UpdateCommand);
     }
 

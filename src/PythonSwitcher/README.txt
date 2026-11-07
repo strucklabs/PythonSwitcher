@@ -29,10 +29,24 @@ How to use
   Right-click an entry for:
     "Check this entry again" - re-checks only this entry, for example to see
                                whether an update worked.
+    "Test update (dry run)"  - for a pip package or the pip summary: shows
+                               what pip would change (including packages
+                               pulled in, downgrades and replaced special
+                               builds such as CUDA builds) without
+                               installing anything.
     "Copy update command"    - copies the command that updates this entry
                                (for the pip summary: all outdated packages).
                                The commands work in PowerShell; commands
                                without quotes also work in the Command Prompt.
+  "Check this entry again" on a pip package also checks whether pip would
+  really install the newer version (pip sometimes keeps the old version
+  silently and still reports success) and updates the summary and the
+  dependency check of that Python version.
+  "Dependencies" shows the result of "pip check" (broken or missing
+  dependencies, status "conflict").
+  Special builds such as "2.3.0+cu121" (CUDA/GPU) are shown as a note
+  without update command, because an update from PyPI would replace them
+  with the standard build.
   Python installations marked as "externally managed" (for example by uv)
   show newer package versions only as a note, without an update command,
   because pip refuses to change them.

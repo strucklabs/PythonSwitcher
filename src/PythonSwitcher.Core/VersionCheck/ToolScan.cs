@@ -9,6 +9,8 @@ public enum CheckStatus
     UpdateVerfuegbar,
     Unbekannt,
     Hinweis,
+    /// <summary>Kaputte oder fehlende Abhängigkeit (pip check).</summary>
+    Problem,
 }
 
 /// <summary>Eine Zeile im Versionscheck.</summary>
@@ -37,6 +39,8 @@ public enum TargetKind
     PipPackage,
     /// <summary>Alle pip-Pakete einer Python-Installation.</summary>
     PipSummary,
+    /// <summary>Abhängigkeitsprüfung (pip check) einer Python-Installation.</summary>
+    PipCheck,
 }
 
 /// <summary>Ziel einer Einzelprüfung.</summary>
@@ -48,6 +52,7 @@ public sealed record CheckTarget(TargetKind Kind, ToolKind? Tool = null, string?
         TargetKind.Runtime => $"runtime|{PathUtil.Normalize(Root ?? "")}",
         TargetKind.Tool => $"tool|{CatalogName}",
         TargetKind.PipPackage => $"pip|{PathUtil.Normalize(Root ?? "")}|{Package?.ToLowerInvariant()}",
+        TargetKind.PipCheck => $"pipcheck|{PathUtil.Normalize(Root ?? "")}",
         _ => $"pipall|{PathUtil.Normalize(Root ?? "")}",
     };
 }

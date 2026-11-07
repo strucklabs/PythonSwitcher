@@ -11,7 +11,15 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
     <Version>0.1.0</Version>
+    <!-- Programmsymbol „Weiche“; neu erzeugen mit Assets\make-icon.ps1 -->
+    <ApplicationIcon>Assets\PythonSwitcher.ico</ApplicationIcon>
   </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Für Titelleiste und Taskleiste der Fenster -->
+    <Resource Include="Assets\PythonSwitcher.ico" />
+    <None Remove="Assets\make-icon.ps1" />
+  </ItemGroup>
 
   <ItemGroup>
     <!-- Nur für das Weitergabe-Paket, nicht für den normalen Build -->
