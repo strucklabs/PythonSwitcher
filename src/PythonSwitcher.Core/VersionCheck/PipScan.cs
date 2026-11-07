@@ -130,10 +130,127 @@ public sealed class PipScan
             }
         }
 
-        // Übersicht an die tatsächlichen Paketzeilen angleichen (Spezial-Builds zählen nicht als normales Update)
+        // Würden die neuen Versionen installierte Pakete brechen? (ein Aufruf für alle veralteten Pakete)
+        if (managed is null)
+        {
+            var planned = result.Where(r => r.Target?.Kind == TargetKind.PipPackage && r.Status == CheckStatus.UpdateVerfuegbar)
+                .ToDictionary(r => r.Target!.Package!, r => r.Latest!);
+            var check = await FindBreakagesAsync(python, planned, ct);
+            for (int i = 0; i < result.Count; i++)
+            {
+                var r = result[i];
+                if (r.Target?.Kind != TargetKind.PipPackage || r.Status != CheckStatus.UpdateVerfuegbar)
+                    continue;
+                var breaks = check.Breaks.Where(b => NormalizeName(b.Package) == NormalizeName(r.Target.Package!)).ToList();
+                if (breaks.Count == 0)
+                    continue;
+                var range = RangeFor(check, r.Target.Package!);
+                result[i] = r with
+                {
+                    Status = CheckStatus.Hinweis,
+                    Hint = BreakHint(breaks, range, r.Installed),
+                    UpdateCommand = RangeCommand(python, range, r.Installed),
+                };
+            }
+        }
+
+        // Trockenlauf je verbleibendem Update: erst er zeigt, was die NEUE Version selbst nachzieht
+        // (z. B. xformers → neueres torch, das den CUDA-Build ersetzt).
+        bool tooMany = false;
+        if (managed is null)
+        {
+            var candidates = result
+                .Select((r, i) => (Row: r, Index: i))
+                .Where(x => x.Row.Target?.Kind == TargetKind.PipPackage && x.Row.Status == CheckStatus.UpdateVerfuegbar)
+                .ToList();
+            tooMany = candidates.Count > MaxDryRunsPerCheck;
+            if (!tooMany && candidates.Count > 0)
+            {
+                using var gate = new SemaphoreSlim(DryRunParallelism);
+                var problems = await Task.WhenAll(candidates.Select(async x =>
+                {
+                    await gate.WaitAsync(ct);
+                    try
+                    {
+                        return await AnalyzeUpdateAsync(inst, new Dictionary<string, string?> { [x.Row.Target!.Package!] = x.Row.Latest }, ct);
+                    }
+                    finally
+                    {
+                        gate.Release();
+                    }
+                }));
+                for (int k = 0; k < candidates.Count; k++)
+                {
+                    if (problems[k] is { } problem)
+                    {
+                        result[candidates[k].Index] = candidates[k].Row with
+                        {
+                            Status = CheckStatus.Hinweis,
+                            Hint = $"The update would cause problems: {problem.TrimEnd('.')}. Use \"Test update (dry run)\" for details.",
+                            UpdateCommand = null,
+                        };
+                    }
+                }
+            }
+        }
+
+        // Übersicht an die tatsächlichen Paketzeilen angleichen (Spezial-Builds und Brüche zählen nicht als normales Update)
         if (managed is null && result.FindIndex(r => r.Name == SummaryName && r.Target?.Kind == TargetKind.PipSummary) is var si and >= 0)
-            result[si] = UpdateSummary(result[si], result);
+        {
+            var summary = UpdateSummary(result[si], result);
+            if (tooMany)
+            {
+                summary = summary with
+                {
+                    Hint = summary.Hint + $" More than {MaxDryRunsPerCheck} packages are outdated, so they were not each tested " +
+                                          "with a dry run. Use \"Test update (dry run)\" before updating.",
+                };
+            }
+            else
+            {
+                // Der Sammelbefehl als Ganzes: einzeln harmlose Updates können sich gemeinsam beißen
+                var batch = result.Where(r => r.Target?.Kind == TargetKind.PipPackage && r.Status == CheckStatus.UpdateVerfuegbar)
+                    .ToDictionary(r => r.Target!.Package!, r => r.Latest);
+                if (batch.Count > 1 && await AnalyzeUpdateAsync(inst, batch, ct) is { } batchProblem)
+                {
+                    summary = summary with
+                    {
+                        Status = CheckStatus.Hinweis,
+                        UpdateCommand = null,
+                        Hint = summary.Hint.Replace(" The update command updates all outdated ones.", "") +
+                               $" Updating them all at once would cause problems: {batchProblem}. Update them one by one.",
+                    };
+                }
+            }
+            result[si] = summary;
+        }
         return result;
+    }
+
+    /// <summary>Höchstens so viele Einzel-Trockenläufe pro Python-Version und Check.</summary>
+    public const int MaxDryRunsPerCheck = 15;
+    private const int DryRunParallelism = 3;
+
+    /// <summary>
+    /// Trockenlauf und Bewertung: würde das Update einen Spezial-Build ersetzen, etwas herabstufen, installierte Pakete
+    /// brechen oder gar nicht installiert werden? Liefert eine kurze Begründung oder null (unbedenklich bzw. nicht feststellbar).
+    /// </summary>
+    public async Task<string?> AnalyzeUpdateAsync(Installation inst, IReadOnlyDictionary<string, string?> wanted, CancellationToken ct)
+    {
+        var r = await DryRunAsync(inst, wanted, ct);
+        if (r.Error is not null)
+            return null; // nicht feststellbar: nichts sperren
+        var problems = new List<string>();
+        foreach (var c in r.Changes)
+        {
+            if (c.From is not null && SpecialBuildNote(c.From, c.To) is not null)
+                problems.Add($"it would replace the special build {c.Package} {c.From} with the standard build {c.To} (for example losing GPU support)");
+            else if (c.Kind == ChangeKind.Downgrade)
+                problems.Add($"it would downgrade {c.Package} {c.From} → {c.To}");
+        }
+        problems.AddRange((r.Breaks ?? []).Select(b => b.ToString()));
+        problems.AddRange(r.NotInstallable.Select(n => $"{n.Key}: {n.Value}"));
+        return problems.Count == 0 ? null : string.Join("; ", problems.Distinct());
     }
 
     /// <summary>
@@ -190,6 +307,27 @@ public sealed class PipScan
         var reason = await WhyNotInstallableAsync(python, package, found.Version, previous.Latest, ct);
         if (reason is not null)
             return previous with { Installed = found.Version, Status = CheckStatus.Hinweis, Hint = reason, UpdateCommand = null };
+        // Installierbar – aber würde die neue Version ein installiertes Paket brechen?
+        var check = await FindBreakagesAsync(python, new Dictionary<string, string> { [package] = previous.Latest! }, ct);
+        if (check.Breaks.Count > 0)
+        {
+            var range = RangeFor(check, package);
+            return previous with
+            {
+                Installed = found.Version, Status = CheckStatus.Hinweis,
+                Hint = BreakHint(check.Breaks, range, found.Version),
+                UpdateCommand = RangeCommand(python, range, found.Version),
+            };
+        }
+        // Was zieht die neue Version selbst nach? (z. B. ein neueres torch, das den CUDA-Build ersetzt)
+        if (await AnalyzeUpdateAsync(inst, new Dictionary<string, string?> { [package] = previous.Latest }, ct) is { } problem)
+        {
+            return previous with
+            {
+                Installed = found.Version, Status = CheckStatus.Hinweis, UpdateCommand = null,
+                Hint = $"The update would cause problems: {problem.TrimEnd('.')}. Use \"Test update (dry run)\" for details.",
+            };
+        }
         var cmd = UpgradeCommand(python, [package]);
         return previous with { Installed = found.Version, Status = CheckStatus.UpdateVerfuegbar, Hint = "Update: " + cmd, UpdateCommand = cmd };
     }
@@ -206,7 +344,8 @@ public sealed class PipScan
         var run = await _run(python, ["-m", "pip", "install", "--upgrade", package, "--dry-run", "-vv", "--disable-pip-version-check"], 300_000, ct);
         if (run is null)
             return null;
-        return ExplainDryRun(run.Out + "\n" + run.Err, package, installed, latest);
+        var reason = ExplainDryRun(run.Out + "\n" + run.Err, package, installed, latest);
+        return reason is null ? null : await NameLimitersAsync(python, package, installed, latest, reason, ct);
     }
 
     internal static string? ExplainDryRun(string output, string package, string installed, string latest)
@@ -243,9 +382,7 @@ public sealed class PipScan
             parts.Add(string.Join("; ", conflicts));
         if (missing.Count > 0)
             parts.Add(string.Join(", ", missing) + (missing.Count == 1 ? " is" : " are") + " not available on PyPI");
-        var why = parts.Count > 0
-            ? string.Join(" – ", parts)
-            : "probably another installed package requires an older version (pip did not name it)";
+        var why = parts.Count > 0 ? string.Join(" – ", parts) : GenericReason;
         return $"Version {latest} cannot be installed: {why}. pip keeps {installed} and still reports success, " +
                "so updating has no effect.";
     }
@@ -292,6 +429,159 @@ public sealed class PipScan
 
     public const string DependenciesName = "Dependencies";
 
+    /// <summary>Ein installiertes Paket, dessen Anforderung die geplante neue Version nicht erfüllt.</summary>
+    public sealed record Breakage(string Requirer, string RequirerVersion, string Requirement, string Package, string NewVersion)
+    {
+        public override string ToString() =>
+            $"{Requirer} {RequirerVersion} requires {Requirement}, but the update installs {Package} {NewVersion}";
+    }
+
+    /// <summary>
+    /// Verträglicher Bereich eines Pakets: Schnittmenge der Anforderungen aller installierten Pakete daran,
+    /// dazu die neueste Version auf PyPI in diesem Bereich (null, wenn nicht ermittelbar).
+    /// </summary>
+    public sealed record CompatibleRange(string Package, string Specifier, string? Best);
+
+    public sealed record BreakCheck(IReadOnlyList<Breakage> Breaks, IReadOnlyDictionary<string, CompatibleRange> Ranges)
+    {
+        public static readonly BreakCheck Empty = new([], new Dictionary<string, CompatibleRange>());
+    }
+
+    /// <summary>
+    /// Läuft in der zu prüfenden Python: liest die Anforderungen aller installierten Pakete und prüft sie gegen die
+    /// geplanten Versionen (Argument: JSON {paket: version}). Nutzt die Versionslogik von pip (wie pip check).
+    /// Für jedes betroffene Paket wird außerdem der verträgliche Bereich und die neueste passende Version auf PyPI
+    /// ermittelt. Pakete, die selbst ersetzt werden, werden nicht geprüft – ihre neue Version kann andere Anforderungen haben.
+    /// </summary>
+    private const string BreakScript = """
+        import sys, json, re, urllib.request, importlib.metadata as md
+        try:
+            from pip._vendor.packaging.requirements import Requirement
+            from pip._vendor.packaging.specifiers import SpecifierSet
+            from pip._vendor.packaging.version import Version
+        except ImportError:
+            from packaging.requirements import Requirement
+            from packaging.specifiers import SpecifierSet
+            from packaging.version import Version
+        norm = lambda n: re.sub(r"[-_.]+", "-", n).lower()
+        new = {norm(k): v for k, v in json.loads(sys.argv[1]).items()}
+        out, seen, specs = [], set(), {}
+        for d in md.distributions():
+            name = d.metadata["Name"]
+            if not name or norm(name) in new or norm(name) in seen:
+                continue
+            seen.add(norm(name))
+            for r in (d.requires or []):
+                try:
+                    req = Requirement(r)
+                    key = norm(req.name)
+                    if key not in new or (req.marker and not req.marker.evaluate({"extra": ""})):
+                        continue
+                    specs.setdefault(key, [req.name, SpecifierSet()])
+                    specs[key][1] &= req.specifier
+                    v = new[key]
+                    if not req.specifier.contains(Version(v), prereleases=True):
+                        out.append({"requirer": name, "version": d.version, "requirement": str(req), "package": req.name, "new": v})
+                except Exception:
+                    pass
+        ranges = {}
+        for key in {norm(b["package"]) for b in out}:
+            name, spec = specs[key]
+            best = None
+            try:
+                with urllib.request.urlopen("https://pypi.org/pypi/%s/json" % name, timeout=15) as f:
+                    releases = json.load(f)["releases"]
+                ok = [Version(v) for v, files in releases.items()
+                      if files and not all(x.get("yanked") for x in files) and not Version(v).is_prerelease and Version(v) in spec]
+                best = str(max(ok)) if ok else None
+            except Exception:
+                pass
+            ranges[name] = {"spec": str(spec), "best": best}
+        print(json.dumps({"breaks": out, "ranges": ranges}))
+        """;
+
+    /// <summary>
+    /// Welche installierten Pakete würden durch die geplanten Versionen gebrochen, und welcher Bereich passt?
+    /// pip selbst prüft das erst nach der Installation ("… requires …, but you have … which is incompatible").
+    /// </summary>
+    public async Task<BreakCheck> FindBreakagesAsync(string python, IReadOnlyDictionary<string, string> newVersions, CancellationToken ct)
+    {
+        if (newVersions.Count == 0)
+            return BreakCheck.Empty;
+        var json = JsonSerializer.Serialize(newVersions);
+        var run = await _run(python, ["-c", BreakScript.Replace("\r", ""), json], 90_000, ct);
+        return run is null || run.ExitCode != 0 ? BreakCheck.Empty : ParseBreakages(run.Out);
+    }
+
+    internal static BreakCheck ParseBreakages(string output)
+    {
+        var line = output.Replace("\r", "").Split('\n').LastOrDefault(l => l.TrimStart().StartsWith('{'));
+        if (line is null)
+            return BreakCheck.Empty;
+        try
+        {
+            using var doc = JsonDocument.Parse(line);
+            var breaks = doc.RootElement.GetProperty("breaks").EnumerateArray().Select(e => new Breakage(
+                    e.GetProperty("requirer").GetString() ?? "", e.GetProperty("version").GetString() ?? "",
+                    e.GetProperty("requirement").GetString() ?? "", e.GetProperty("package").GetString() ?? "",
+                    e.GetProperty("new").GetString() ?? ""))
+                .Distinct().ToList();
+            var ranges = new Dictionary<string, CompatibleRange>(StringComparer.OrdinalIgnoreCase);
+            foreach (var r in doc.RootElement.GetProperty("ranges").EnumerateObject())
+            {
+                var best = r.Value.GetProperty("best");
+                ranges[NormalizeName(r.Name)] = new CompatibleRange(r.Name, r.Value.GetProperty("spec").GetString() ?? "",
+                    best.ValueKind == JsonValueKind.String ? best.GetString() : null);
+            }
+            return new BreakCheck(breaks, ranges);
+        }
+        catch (Exception)
+        {
+            return BreakCheck.Empty;
+        }
+    }
+
+    public static CompatibleRange? RangeFor(BreakCheck check, string package) =>
+        check.Ranges.TryGetValue(NormalizeName(package), out var r) ? r : null;
+
+    /// <summary>Text zum verträglichen Bereich, z. B. "Compatible range: >=1.1.0,<1.4 – newest fitting version 1.3.0 (installed)."</summary>
+    public static string RangeText(CompatibleRange? range, string? installed)
+    {
+        if (range is null)
+            return "";
+        var text = $" Compatible range: {(range.Specifier.Length > 0 ? range.Specifier : "any")}";
+        if (range.Best is null)
+            return text + ".";
+        return text + (VersionCompare.Compare(range.Best, installed) <= 0
+            ? $" – newest fitting version {range.Best} is already installed."
+            : $" – newest fitting version: {range.Best}.");
+    }
+
+    /// <summary>Befehl, der nur innerhalb des verträglichen Bereichs aktualisiert – oder null, wenn das nichts bringt.</summary>
+    public static string? RangeCommand(string python, CompatibleRange? range, string? installed) =>
+        range is { Best: { } best } && range.Specifier.Length > 0 && VersionCompare.Compare(best, installed) > 0
+            ? $"{Exe(python)} -m pip install --upgrade \"{range.Package}{range.Specifier}\""
+            : null;
+
+    private static string BreakHint(IEnumerable<Breakage> breaks, CompatibleRange? range, string? installed) =>
+        "Would break installed packages: " + string.Join("; ", breaks) + "." + RangeText(range, installed) +
+        " pip would install the newest version anyway and only warn afterwards.";
+
+    /// <summary>Ersetzt den allgemeinen Grund "pip did not name it" durch die installierten Pakete, die die Version begrenzen.</summary>
+    private async Task<string> NameLimitersAsync(string python, string package, string installed, string latest, string reason, CancellationToken ct)
+    {
+        if (!reason.Contains(GenericReason, StringComparison.Ordinal))
+            return reason;
+        var check = await FindBreakagesAsync(python, new Dictionary<string, string> { [package] = latest }, ct);
+        if (check.Breaks.Count == 0)
+            return reason;
+        return reason.Replace(GenericReason, "held back by installed packages – " +
+                   string.Join("; ", check.Breaks.Select(b => $"{b.Requirer} {b.RequirerVersion} requires {b.Requirement}")))
+               + RangeText(RangeFor(check, package), installed);
+    }
+
+    private const string GenericReason = "probably another installed package requires an older version (pip did not name it)";
+
     public enum ChangeKind { Upgrade, Downgrade, New, Reinstall }
 
     /// <summary>Eine Änderung, die pip vornehmen würde.</summary>
@@ -299,7 +589,10 @@ public sealed class PipScan
 
     /// <summary>Ergebnis eines Trockenlaufs.</summary>
     /// <param name="NotInstallable">Gewünschte Pakete, deren neue Version pip nicht installieren würde, mit Grund.</param>
-    public sealed record DryRunResult(IReadOnlyList<PlannedChange> Changes, IReadOnlyDictionary<string, string> NotInstallable, string? Error);
+    /// <param name="Breaks">Installierte Pakete, die durch die geplanten Versionen gebrochen würden.</param>
+    /// <param name="Ranges">Verträglicher Bereich je betroffenem Paket.</param>
+    public sealed record DryRunResult(IReadOnlyList<PlannedChange> Changes, IReadOnlyDictionary<string, string> NotInstallable, string? Error,
+        IReadOnlyList<Breakage>? Breaks = null, IReadOnlyDictionary<string, CompatibleRange>? Ranges = null);
 
     /// <summary>
     /// Trockenlauf für ein oder mehrere Pakete: "pip install --upgrade … --dry-run --report" – es wird nichts installiert.
@@ -326,7 +619,22 @@ public sealed class PipScan
             var json = _readFile(report);
             if (json is null)
                 return new DryRunResult([], new Dictionary<string, string>(), "pip failed: " + FirstLine(run.Err + "\n" + run.Out));
-            return EvaluateDryRun(json, run.Out + "\n" + run.Err, installed, wanted);
+            var result = EvaluateDryRun(json, run.Out + "\n" + run.Err, installed, wanted);
+
+            // Würden die geplanten Versionen installierte Pakete brechen? (pip selbst warnt erst danach)
+            var planned = result.Changes.Where(c => c.Kind != ChangeKind.Reinstall)
+                .GroupBy(c => c.Package, StringComparer.OrdinalIgnoreCase).ToDictionary(g => g.Key, g => g.First().To);
+            var check = await FindBreakagesAsync(python, planned, ct);
+
+            // Zurückgehaltene Pakete: konkreten Verursacher statt "pip did not name it"
+            var notInstallable = new Dictionary<string, string>(result.NotInstallable);
+            foreach (var (pkg, why) in result.NotInstallable)
+            {
+                installed.TryGetValue(NormalizeName(pkg), out var current);
+                if (wanted.TryGetValue(pkg, out var latest) && latest is not null)
+                    notInstallable[pkg] = await NameLimitersAsync(python, pkg, current ?? "?", latest, why, ct);
+            }
+            return result with { NotInstallable = notInstallable, Breaks = check.Breaks, Ranges = check.Ranges };
         }
         finally
         {
@@ -362,6 +670,19 @@ public sealed class PipScan
             sb.Append("\nCannot be updated:\n");
             foreach (var (pkg, why) in r.NotInstallable)
                 sb.Append("   ").Append(pkg).Append(": ").Append(why).Append('\n');
+        }
+        if (r.Breaks is { Count: > 0 } breaks)
+        {
+            sb.Append("\nWould break installed packages (pip would only warn after installing):\n");
+            foreach (var b in breaks)
+                sb.Append("   ").Append(b).Append('\n');
+            foreach (var pkg in breaks.Select(b => b.Package).Distinct(StringComparer.OrdinalIgnoreCase))
+            {
+                var range = r.Ranges is not null && r.Ranges.TryGetValue(NormalizeName(pkg), out var rg) ? rg : null;
+                var from = r.Changes.FirstOrDefault(c => NormalizeName(c.Package) == NormalizeName(pkg))?.From;
+                if (range is not null)
+                    sb.Append("   → ").Append(pkg).Append(':').Append(RangeText(range, from)).Append('\n');
+            }
         }
         if (r.Changes.Any(c => c.From is not null && SpecialBuildNote(c.From, c.To) is not null))
             sb.Append("\nWARNING: special builds (e.g. CUDA/GPU builds) would be replaced by standard builds from PyPI. " +

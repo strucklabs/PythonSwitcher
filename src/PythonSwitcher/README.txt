@@ -42,6 +42,18 @@ How to use
   really install the newer version (pip sometimes keeps the old version
   silently and still reports success) and updates the summary and the
   dependency check of that Python version.
+  Updates that would break other installed packages (for example
+  "sympy requires mpmath<1.4") are shown as a note with the compatible
+  version range and the newest fitting version; they are left out of the
+  summary command. pip itself only warns about this after installing.
+  In addition, every remaining update is tested with a dry run during the
+  check (and the summary command as a whole). Updates that would replace a
+  special build, downgrade or break something are shown as a note. With
+  more than 15 outdated packages per Python version, this per-package test
+  is skipped - use "Test update (dry run)" then.
+  Limit: checks rely on the version requirements packages declare. Some
+  incompatibilities are not declared (for example older compiled packages
+  with NumPy 2), so test important environments after updating.
   "Dependencies" shows the result of "pip check" (broken or missing
   dependencies, status "conflict").
   Special builds such as "2.3.0+cu121" (CUDA/GPU) are shown as a note
