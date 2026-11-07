@@ -3,7 +3,7 @@ namespace PythonSwitcher.Core.VersionCheck;
 /// <summary>Bewertet die Python- und Git-Installationen aus der Liste gegen die offiziellen Versionen.</summary>
 public static class RuntimeScan
 {
-    /// <param name="installations">Python-Installationen aus der Liste.</param>
+    /// <param name="installations">Python-Installationen; Version muss frisch ausgelesen sein.</param>
     /// <param name="installers">Versionen mit 64-Bit-Windows-Installer (python.org).</param>
     /// <param name="allVersions">Alle stabilen Versionen, auch nur als Quelltext; darf leer sein.</param>
     /// <param name="winget">winget-Liste für den Aktualisierungs-Hinweis; darf null sein.</param>
@@ -18,6 +18,7 @@ public static class RuntimeScan
         {
             var v = Switcher.VersionKey(inst.Version);
             var name = $"Python {v.Major}.{v.Minor}";
+            var target = new CheckTarget(TargetKind.Runtime, ToolKind.Python, inst.Root);
             minors.Add((v.Major, v.Minor));
             var newestInstaller = installers.Where(r => r.Major == v.Major && r.Minor == v.Minor).DefaultIfEmpty().Max();
             var newestSource = allVersions.Where(r => r.Major == v.Major && r.Minor == v.Minor).DefaultIfEmpty().Max();
@@ -33,30 +34,32 @@ public static class RuntimeScan
             if (newestInstaller is null)
             {
                 result.Add(new CheckItem(CheckCategory.Python, group, name, inst.Version, null, CheckStatus.Unbekannt,
-                    "There is no 64-bit Windows installer for this version series on python.org.", sourceNote, inst.Root));
+                    "There is no 64-bit Windows installer for this version series on python.org.", sourceNote, inst.Root,
+                    Target: target));
                 continue;
             }
 
             if (VersionCompare.Compare(inst.Version, newestInstaller.ToString()) < 0)
             {
-                var wingetId = winget?.FirstOrDefault(p => p.Id.Equals($"Python.Python.{v.Major}.{v.Minor}", StringComparison.OrdinalIgnoreCase)
-                    && p.Version == inst.Version)?.Id;
-                var hint = inst.Source == InstallSource.Heruntergeladen
-                    ? $"Update: run the installer of Python {newestInstaller} (python.org); it replaces this installation."
-                    : wingetId is not null
-                        ? $"Update: winget upgrade --id {wingetId} or the installer of Python {newestInstaller} (python.org); replaces this installation."
-                        : $"Update: run the installer of Python {newestInstaller} (python.org); it replaces this installation.";
+                // winget nennt dieselbe Installation unter Python.Python.X.Y (Versionen vergleichen, nicht als Text)
+                var wingetId = inst.Source == InstallSource.Heruntergeladen ? null
+                    : winget?.FirstOrDefault(p => p.Id.Equals($"Python.Python.{v.Major}.{v.Minor}", StringComparison.OrdinalIgnoreCase)
+                        && VersionCompare.Compare(p.Version, inst.Version) == 0)?.Id;
+                var hint = wingetId is not null
+                    ? $"Update: winget upgrade --id {wingetId} or the installer of Python {newestInstaller} (python.org); replaces this installation."
+                    : $"Update: run the installer of Python {newestInstaller} (python.org); it replaces this installation.";
                 result.Add(new CheckItem(CheckCategory.Python, group, name, inst.Version, newestInstaller.ToString(),
-                    CheckStatus.UpdateVerfuegbar, hint, sourceNote, inst.Root));
+                    CheckStatus.UpdateVerfuegbar, hint, sourceNote, inst.Root,
+                    wingetId is null ? null : $"winget upgrade --id {wingetId}", target));
             }
             else
             {
                 result.Add(new CheckItem(CheckCategory.Python, group, name, inst.Version, newestInstaller.ToString(),
-                    CheckStatus.Aktuell, "", sourceNote, inst.Root));
+                    CheckStatus.Aktuell, "", sourceNote, inst.Root, Target: target));
             }
         }
 
-        // Neuere Hauptversion, die noch nicht installiert ist
+        // Neuere Hauptversion, die noch nicht installiert ist (nicht einzeln prüfbar)
         var newest = installers.DefaultIfEmpty().Max();
         if (newest is not null && minors.Count > 0 && !minors.Contains((newest.Major, newest.Minor))
             && minors.All(m => (m.Item1, m.Item2).CompareTo((newest.Major, newest.Minor)) < 0))
@@ -75,10 +78,11 @@ public static class RuntimeScan
         var result = new List<CheckItem>();
         foreach (var inst in installations.OrderByDescending(i => Switcher.VersionKey(i.Version)))
         {
+            var target = new CheckTarget(TargetKind.Runtime, ToolKind.Git, inst.Root);
             if (newest is null)
             {
                 result.Add(new CheckItem(CheckCategory.Git, group, "Git", inst.Version, null, CheckStatus.Unbekannt,
-                    "The version list of Git for Windows could not be retrieved.", null, inst.Root));
+                    "The version list of Git for Windows could not be retrieved.", null, inst.Root, Target: target));
                 continue;
             }
             if (VersionCompare.Compare(inst.Version, newest.Version) < 0)
@@ -91,11 +95,13 @@ public static class RuntimeScan
                         ? "Update: winget upgrade --id Git.Git or the installer from gitforwindows.org."
                         : "Update: run the installer from gitforwindows.org.";
                 result.Add(new CheckItem(CheckCategory.Git, group, "Git", inst.Version, newest.Version,
-                    CheckStatus.UpdateVerfuegbar, hint, null, inst.Root));
+                    CheckStatus.UpdateVerfuegbar, hint, null, inst.Root,
+                    viaWinget ? "winget upgrade --id Git.Git" : null, target));
             }
             else
             {
-                result.Add(new CheckItem(CheckCategory.Git, group, "Git", inst.Version, newest.Version, CheckStatus.Aktuell, "", null, inst.Root));
+                result.Add(new CheckItem(CheckCategory.Git, group, "Git", inst.Version, newest.Version, CheckStatus.Aktuell, "", null,
+                    inst.Root, Target: target));
             }
         }
         return result;

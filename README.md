@@ -32,7 +32,9 @@ und Commit-Nachrichten sind deutsch.
 - **Versionscheck** (eigener Reiter, nur auf Knopfdruck, verändert nichts): Python- und Git-Versionen gegen
   python.org/GitHub, pip-Pakete je Python-Version (`pip list --outdated`), Python-Werkzeuge, Editoren und
   Sprachen aus einem erweiterbaren Katalog (`VersionCheck/Catalog.cs`) über `winget list`, PATH und PyPI.
-  Zu jedem Update ein Hinweis, wie man selbst aktualisiert. Plan und Abnahme: `PLAN-VERSIONSCHECK.md`.
+  Zu jedem Update ein Hinweis, wie man selbst aktualisiert. Python-/Git-Versionen werden bei jeder Prüfung frisch
+  ausgelesen. Kontextmenü je Zeile: „Check this entry again“ (Einzelprüfung, z. B. nach einem Update) und
+  „Copy update command“ (nur der Befehl; bei der pip-Übersicht alle veralteten Pakete). Plan und Abnahme: `PLAN-VERSIONSCHECK.md`.
 
 ## Aufbau
 

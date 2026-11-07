@@ -25,9 +25,10 @@ public sealed class PipScan
     public async Task<List<CheckItem>> ScanAsync(Installation inst, CancellationToken ct)
     {
         var python = ToolDefinition.Python.MainExecutablePath(inst.Root);
-        var group = $"pip packages · Python {inst.Version}";
+        var group = GroupFor(inst);
+        var summaryTarget = new CheckTarget(TargetKind.PipSummary, ToolKind.Python, inst.Root);
         CheckItem Info(string text, CheckStatus status = CheckStatus.Hinweis) =>
-            new(CheckCategory.PipPaket, group, "pip", null, null, status, text, null, inst.Root);
+            new(CheckCategory.PipPaket, group, "pip", null, null, status, text, null, inst.Root, Target: summaryTarget);
 
         var all = await _run(python, ["-m", "pip", "list", "--format=json", "--disable-pip-version-check"], 60_000, ct);
         if (all is null)
@@ -50,16 +51,54 @@ public sealed class PipScan
         }
 
         var old = ParseList(outdated.Out).Where(p => p.Latest is not null).ToList();
+        var sorted = old.OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase).ToList();
         result.Add(new CheckItem(CheckCategory.PipPaket, group, SummaryName, $"{installed.Count} packages", null,
             old.Count == 0 ? CheckStatus.Aktuell : CheckStatus.UpdateVerfuegbar,
-            old.Count == 0 ? "All packages are up to date." : $"{old.Count} of them outdated.", null, inst.Root));
-        foreach (var p in old.OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase))
+            old.Count == 0 ? "All packages are up to date." : $"{old.Count} of them outdated. The update command updates all of them.",
+            null, inst.Root,
+            old.Count == 0 ? null : UpgradeCommand(python, sorted.Select(p => p.Name)),
+            summaryTarget));
+        foreach (var p in sorted)
         {
+            var cmd = UpgradeCommand(python, [p.Name]);
             result.Add(new CheckItem(CheckCategory.PipPaket, group, p.Name, p.Version, p.Latest, CheckStatus.UpdateVerfuegbar,
-                $"Update: \"{python}\" -m pip install --upgrade {p.Name}", null, inst.Root));
+                "Update: " + cmd, null, inst.Root, cmd,
+                new CheckTarget(TargetKind.PipPackage, ToolKind.Python, inst.Root, Package: p.Name)));
         }
         return result;
     }
+
+    public static string GroupFor(Installation inst) => $"pip packages · Python {inst.Version}";
+
+    public static string UpgradeCommand(string python, IEnumerable<string> packages) =>
+        $"\"{python}\" -m pip install --upgrade {string.Join(" ", packages)}";
+
+    /// <summary>
+    /// Einzelprüfung eines Pakets: liest nur die installierte Version (schnell, ohne Netz) und vergleicht sie mit der
+    /// zuvor ermittelten neuesten Version, die pip bereits passend zu dieser Python-Version bestimmt hatte.
+    /// </summary>
+    public async Task<CheckItem> RecheckPackageAsync(CheckItem previous, Installation inst, CancellationToken ct)
+    {
+        var package = previous.Target?.Package ?? previous.Name;
+        var python = ToolDefinition.Python.MainExecutablePath(inst.Root);
+        var all = await _run(python, ["-m", "pip", "list", "--format=json", "--disable-pip-version-check"], 60_000, ct);
+        if (all is null || all.ExitCode != 0)
+            return previous with { Status = CheckStatus.Unbekannt, Hint = "The installed version could not be read (pip did not respond)." };
+
+        var found = ParseList(all.Out).FirstOrDefault(p => NormalizeName(p.Name) == NormalizeName(package));
+        if (found is null)
+            return previous with { Installed = null, Status = CheckStatus.Hinweis, Hint = "The package is no longer installed.", UpdateCommand = null };
+
+        var cmp = VersionCompare.Compare(found.Version, previous.Latest);
+        if (cmp is >= 0)
+            return previous with { Installed = found.Version, Status = CheckStatus.Aktuell, Hint = "", UpdateCommand = null };
+        var cmd = UpgradeCommand(python, [package]);
+        return previous with { Installed = found.Version, Status = CheckStatus.UpdateVerfuegbar, Hint = "Update: " + cmd, UpdateCommand = cmd };
+    }
+
+    /// <summary>Paketnamen vergleichen wie pip: Groß/klein sowie "-", "_" und "." gelten als gleich.</summary>
+    private static string NormalizeName(string name) =>
+        System.Text.RegularExpressions.Regex.Replace(name.ToLowerInvariant(), "[-_.]+", "-");
 
     internal static List<PipPackage> ParseList(string json)
     {

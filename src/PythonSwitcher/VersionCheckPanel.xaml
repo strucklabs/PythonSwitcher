@@ -14,7 +14,7 @@
             <TextBlock x:Name="ProgressText" TextWrapping="Wrap" />
         </StackPanel>
 
-        <ListView x:Name="List" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+        <ListView x:Name="List" ScrollViewer.HorizontalScrollBarVisibility="Disabled" ContextMenuOpening="List_ContextMenuOpening">
             <ListView.GroupStyle>
                 <GroupStyle>
                     <GroupStyle.HeaderTemplate>
@@ -26,7 +26,8 @@
             </ListView.GroupStyle>
             <ListView.ContextMenu>
                 <ContextMenu>
-                    <MenuItem Header="Copy hint" Click="CopyHint_Click" />
+                    <MenuItem x:Name="RecheckItem" Header="Check this entry again" Click="Recheck_Click" />
+                    <MenuItem x:Name="CopyCommandItem" Header="Copy update command" Click="CopyCommand_Click" />
                 </ContextMenu>
             </ListView.ContextMenu>
             <ListView.ItemContainerStyle>

@@ -205,6 +205,19 @@ public sealed class Switcher
         _store.Save(Settings);
     }
 
+    /// <summary>
+    /// Übernimmt eine frisch ausgelesene Versionsnummer (z. B. nach einem Update von außen).
+    /// Liefert true, wenn sich etwas geändert hat.
+    /// </summary>
+    public bool UpdateVersion(ToolKind tool, string root, string? version)
+    {
+        if (string.IsNullOrWhiteSpace(version) || Settings.Find(tool, root) is not { } inst || inst.Version == version)
+            return false;
+        inst.Version = version;
+        _store.Save(Settings);
+        return true;
+    }
+
     /// <summary>Nimmt eine Installation aus der Liste; die automatische Suche nimmt sie danach nicht wieder auf.</summary>
     public void Unregister(Installation installation)
     {

@@ -12,6 +12,8 @@ public enum CheckStatus
 }
 
 /// <summary>Eine Zeile im Versionscheck.</summary>
+/// <param name="UpdateCommand">Reiner Befehl zum Aktualisieren (zum Kopieren); null, wenn es keinen gibt.</param>
+/// <param name="Target">Was bei einer Einzelprüfung neu geprüft wird; null, wenn die Zeile nicht einzeln prüfbar ist.</param>
 public sealed record CheckItem(
     CheckCategory Category,
     string Group,
@@ -21,7 +23,34 @@ public sealed record CheckItem(
     CheckStatus Status,
     string Hint,
     string? Note = null,
-    string? Detail = null);
+    string? Detail = null,
+    string? UpdateCommand = null,
+    CheckTarget? Target = null);
+
+public enum TargetKind
+{
+    /// <summary>Eine Python- oder Git-Installation (Root).</summary>
+    Runtime,
+    /// <summary>Ein Katalogeintrag (Werkzeug, Editor, Sprache).</summary>
+    Tool,
+    /// <summary>Ein einzelnes pip-Paket einer Python-Installation.</summary>
+    PipPackage,
+    /// <summary>Alle pip-Pakete einer Python-Installation.</summary>
+    PipSummary,
+}
+
+/// <summary>Ziel einer Einzelprüfung.</summary>
+public sealed record CheckTarget(TargetKind Kind, ToolKind? Tool = null, string? Root = null, string? CatalogName = null, string? Package = null)
+{
+    /// <summary>Zeilen mit gleichem Schlüssel werden bei einer Einzelprüfung gemeinsam ersetzt.</summary>
+    public string ReplaceKey => Kind switch
+    {
+        TargetKind.Runtime => $"runtime|{PathUtil.Normalize(Root ?? "")}",
+        TargetKind.Tool => $"tool|{CatalogName}",
+        TargetKind.PipPackage => $"pip|{PathUtil.Normalize(Root ?? "")}|{Package?.ToLowerInvariant()}",
+        _ => $"pipall|{PathUtil.Normalize(Root ?? "")}",
+    };
+}
 
 public static class VersionCompare
 {
@@ -123,7 +152,9 @@ public sealed class ToolScan
                     ? "Found, but the version number could not be read."
                     : "Latest version could not be determined." + (entry.UpdateCommand is null ? "" : " Check manually: " + entry.UpdateCommand),
             };
-            result.Add(new CheckItem(entry.Category, group, entry.Name, installed, latest, status, hint, entry.Note, path));
+            result.Add(new CheckItem(entry.Category, group, entry.Name, installed, latest, status, hint, entry.Note, path,
+                status == CheckStatus.UpdateVerfuegbar ? entry.UpdateCommand : null,
+                new CheckTarget(TargetKind.Tool, CatalogName: entry.Name)));
         }
         return result;
     }
@@ -157,7 +188,9 @@ public sealed class ToolScan
             latest = null;
             hint = "Not known to winget; check the vendor's website for the latest version.";
         }
-        return new CheckItem(entry.Category, group, entry.Name, p.Version, latest, status, hint, entry.Note, p.Name);
+        return new CheckItem(entry.Category, group, entry.Name, p.Version, latest, status, hint, entry.Note, p.Name,
+            status == CheckStatus.UpdateVerfuegbar ? $"winget upgrade --id {p.Id}" : null,
+            new CheckTarget(TargetKind.Tool, CatalogName: entry.Name));
     }
 }
 

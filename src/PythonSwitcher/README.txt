@@ -24,8 +24,13 @@ How to use
   installed around Python (Python, Git, tools, editors, programming languages
   and pip packages) and what has a newer version, each with a hint on how to
   update it. Nothing is changed. For editors and languages, winget (App
-  Installer by Microsoft) is used if available. Right-click > "Copy hint"
-  copies a command to the clipboard.
+  Installer by Microsoft) is used if available. Installed Python and Git
+  versions are read fresh on every check.
+  Right-click an entry for:
+    "Check this entry again" - re-checks only this entry, for example to see
+                               whether an update worked.
+    "Copy update command"    - copies the command that updates this entry
+                               (for the pip summary: all outdated packages).
 - Remove: Removes a version from the list. Only versions downloaded with this
   program can optionally be deleted as well.
 
