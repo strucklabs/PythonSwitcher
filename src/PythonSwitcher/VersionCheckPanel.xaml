@@ -29,6 +29,7 @@
                     <MenuItem x:Name="RecheckItem" Header="Check this entry again" Click="Recheck_Click" />
                     <MenuItem x:Name="DryRunItem" Header="Test update (dry run)" Click="DryRun_Click" />
                     <MenuItem x:Name="HoldItem" Header="Hold this version …" Click="Hold_Click" />
+                    <Separator />
                     <MenuItem x:Name="CopyCommandItem" Header="Copy update command" Click="CopyCommand_Click" />
                 </ContextMenu>
             </ListView.ContextMenu>

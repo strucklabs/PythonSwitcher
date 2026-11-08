@@ -121,13 +121,6 @@ public partial class VersionCheckPanel : UserControl
             _main.RefreshAll();
     }
 
-    private async void Recheck_Click(object sender, RoutedEventArgs e)
-    {
-        if (_busy || List.SelectedItem is not CheckRow { Item.Target: not null } row)
-            return;
-        await RecheckRowAsync(row);
-    }
-
     /// <summary>Einzelprüfung einer Zeile (auch nach Festhalten/Freigeben, damit Status und Übersicht stimmen).</summary>
     private async Task RecheckRowAsync(CheckRow row)
     {
@@ -249,25 +242,45 @@ public partial class VersionCheckPanel : UserControl
         return false;
     }
 
+    /// <summary>Markierte Zeilen in Listenreihenfolge.</summary>
+    private List<CheckRow> SelectedRows() =>
+        List.SelectedItems.Cast<CheckRow>().OrderBy(r => _rows.IndexOf(r)).ToList();
+
+    /// <summary>Aktuelle Zeile zu einem Eintrag (nach einer Einzelprüfung wurde die Zeile ggf. ersetzt).</summary>
+    private CheckRow? CurrentRow(CheckItem item) =>
+        _rows.FirstOrDefault(r => r.Item.Target?.ReplaceKey == item.Target?.ReplaceKey && r.Name == item.Name)
+        ?? _rows.FirstOrDefault(r => r.Item.Target?.ReplaceKey == item.Target?.ReplaceKey);
+
+    private static string Count(string text, int n) => n > 1 ? $"{text} ({n})" : text;
+
     private async void DryRun_Click(object sender, RoutedEventArgs e)
     {
-        if (_busy || List.SelectedItem is not CheckRow row || !CanDryRun(row.Item))
+        var rows = SelectedRows();
+        if (_busy || rows.Count == 0)
             return;
+        var items = rows.Select(r => r.Item).ToList();
+        bool single = rows.Count == 1;
+        if (single ? !CanDryRun(items[0]) : !VersionChecker.CanDryRunTogether(items))
+            return;
+
+        var label = single ? $"\"{rows[0].Name}\"" : $"{rows.Count} packages ({string.Join(", ", rows.Select(r => r.Name))})";
         _cts = new CancellationTokenSource();
         SetBusy(true);
-        ProgressText.Text = $"Dry run for \"{row.Name}\" – pip resolves the update without installing anything. " +
-                            "This can take a while for many packages …";
+        ProgressText.Text = $"Dry run for {label} – pip resolves the update without installing anything. This can take a while …";
         try
         {
-            var item = row.Item;
-            var groupRows = GroupRows(item);
             var snapshot = Snapshot();
             var token = _cts.Token;
-            var result = await Task.Run(() => _checker.DryRunAsync(item, groupRows, snapshot, token), token);
+            var item = items[0];
+            var groupRows = GroupRows(item);
+            var result = single
+                ? await Task.Run(() => _checker.DryRunAsync(item, groupRows, snapshot, token), token)
+                : await Task.Run(() => _checker.DryRunPackagesAsync(items, snapshot, token), token);
             var text = PipScan.DescribeDryRun(result);
-            ProgressText.Text = $"Dry run for \"{row.Name}\" finished at {DateTime.Now.ToString(MainWindow.TimeFormat)}. Nothing was installed.";
-            MessageBox.Show(_main, text, $"Dry run – {row.Group}", MessageBoxButton.OK,
-                result.Error is not null || result.NotInstallable.Count > 0 || result.Changes.Any(c => c.Kind == PipScan.ChangeKind.Downgrade)
+            ProgressText.Text = $"Dry run for {label} finished at {DateTime.Now.ToString(MainWindow.TimeFormat)}. Nothing was installed.";
+            MessageBox.Show(_main, text, $"Dry run – {rows[0].Group}", MessageBoxButton.OK,
+                result.Error is not null || result.NotInstallable.Count > 0 || result.Breaks is { Count: > 0 }
+                || result.Changes.Any(c => c.Kind == PipScan.ChangeKind.Downgrade)
                     ? MessageBoxImage.Warning : MessageBoxImage.Information);
         }
         catch (OperationCanceledException)
@@ -288,43 +301,98 @@ public partial class VersionCheckPanel : UserControl
 
     private void List_ContextMenuOpening(object sender, ContextMenuEventArgs e)
     {
-        var row = List.SelectedItem as CheckRow;
-        RecheckItem.IsEnabled = !_busy && row?.Item.Target is not null;
-        DryRunItem.IsEnabled = !_busy && CanDryRun(row?.Item);
-        CopyCommandItem.IsEnabled = !string.IsNullOrEmpty(row?.Item.UpdateCommand);
-        bool held = row is not null && HoldRules.Find(row.Item, _switcher.Settings.Holds) is not null;
-        HoldItem.Header = held ? "Release hold" : "Hold this version …";
-        HoldItem.IsEnabled = !_busy && row is not null && HoldRules.KeyFor(row.Item) is not null;
+        var rows = SelectedRows();
+        var items = rows.Select(r => r.Item).ToList();
+        int n = rows.Count;
+
+        RecheckItem.Header = n > 1 ? Count("Check these entries again", n) : "Check this entry again";
+        RecheckItem.IsEnabled = !_busy && items.Any(i => i.Target is not null);
+
+        DryRunItem.Header = n > 1 ? $"Test updates together ({n}, dry run)" : "Test update (dry run)";
+        DryRunItem.IsEnabled = !_busy && (n == 1 ? CanDryRun(items[0]) : VersionChecker.CanDryRunTogether(items));
+
+        var holdable = items.Where(i => HoldRules.KeyFor(i) is not null).ToList();
+        bool allHeld = holdable.Count > 0 && holdable.All(i => HoldRules.Find(i, _switcher.Settings.Holds) is not null);
+        HoldItem.Header = allHeld
+            ? Count("Release hold", holdable.Count)
+            : Count(holdable.Count > 1 ? "Hold these versions …" : "Hold this version …", holdable.Count);
+        HoldItem.IsEnabled = !_busy && holdable.Count > 0;
+
+        int commands = VersionChecker.CombineCommands(items).Count;
+        CopyCommandItem.Header = commands > 1 ? Count("Copy update commands", commands) : "Copy update command";
+        CopyCommandItem.IsEnabled = commands > 0;
+    }
+
+    private async void Recheck_Click(object sender, RoutedEventArgs e)
+    {
+        var items = SelectedRows().Select(r => r.Item).Where(i => i.Target is not null).ToList();
+        if (_busy || items.Count == 0)
+            return;
+        for (int k = 0; k < items.Count; k++)
+        {
+            // Zeilen werden beim Prüfen ersetzt – jeweils die aktuelle Zeile suchen
+            if (CurrentRow(items[k]) is { } row)
+            {
+                if (items.Count > 1)
+                    _main.SetStatus($"Checking entry {k + 1} of {items.Count} …");
+                await RecheckRowAsync(row);
+            }
+        }
+        if (items.Count > 1)
+            _main.SetStatus($"{items.Count} entries checked again at {DateTime.Now.ToString(MainWindow.TimeFormat)}.");
     }
 
     private async void Hold_Click(object sender, RoutedEventArgs e)
     {
-        if (_busy || List.SelectedItem is not CheckRow row || HoldRules.KeyFor(row.Item) is not { } key)
+        var items = SelectedRows().Select(r => r.Item).Where(i => HoldRules.KeyFor(i) is not null).ToList();
+        if (_busy || items.Count == 0)
             return;
-        if (HoldRules.Find(row.Item, _switcher.Settings.Holds) is not null)
+        bool allHeld = items.All(i => HoldRules.Find(i, _switcher.Settings.Holds) is not null);
+        if (allHeld)
         {
-            _switcher.Release(key.Kind, key.Root, key.Package);
-            _main.SetStatus($"\"{row.Name}\" is no longer held.");
+            foreach (var i in items)
+            {
+                var key = HoldRules.KeyFor(i)!.Value;
+                _switcher.Release(key.Kind, key.Root, key.Package);
+            }
+            _main.SetStatus(items.Count == 1 ? $"\"{items[0].Name}\" is no longer held." : $"{items.Count} entries are no longer held.");
         }
         else
         {
-            var dialog = new HoldDialog(row.Name, row.Item.Installed) { Owner = _main };
+            var toHold = items.Where(i => HoldRules.Find(i, _switcher.Settings.Holds) is null).ToList();
+            var dialog = toHold.Count == 1
+                ? new HoldDialog(toHold[0].Name, toHold[0].Installed)
+                : new HoldDialog($"{toHold.Count} entries ({string.Join(", ", toHold.Select(i => i.Name))})", null);
+            dialog.Owner = _main;
             if (dialog.ShowDialog() != true)
                 return;
-            _switcher.Hold(key.Kind, key.Root, key.Package, row.Item.Installed, dialog.Reason);
-            _main.SetStatus($"\"{row.Name}\" is now held at {row.Item.Installed}.");
+            foreach (var i in toHold)
+            {
+                var key = HoldRules.KeyFor(i)!.Value;
+                _switcher.Hold(key.Kind, key.Root, key.Package, i.Installed, dialog.Reason);
+            }
+            _main.SetStatus(toHold.Count == 1 ? $"\"{toHold[0].Name}\" is now held at {toHold[0].Installed}." : $"{toHold.Count} entries are now held.");
+            items = toHold;
         }
-        await RecheckRowAsync(row);
+        foreach (var i in items)
+        {
+            if (CurrentRow(i) is { } row)
+                await RecheckRowAsync(row);
+        }
     }
 
     private void CopyCommand_Click(object sender, RoutedEventArgs e)
     {
-        if (List.SelectedItem is not CheckRow { Item.UpdateCommand: { Length: > 0 } command })
+        var commands = VersionChecker.CombineCommands(SelectedRows().Select(r => r.Item));
+        if (commands.Count == 0)
             return;
+        var text = string.Join(Environment.NewLine, commands);
         try
         {
-            Clipboard.SetText(command);
-            _main.SetStatus("Update command copied to the clipboard: " + command);
+            Clipboard.SetText(text);
+            _main.SetStatus(commands.Count == 1
+                ? "Update command copied to the clipboard: " + text
+                : $"{commands.Count} update commands copied to the clipboard (one per line).");
         }
         catch (Exception)
         {

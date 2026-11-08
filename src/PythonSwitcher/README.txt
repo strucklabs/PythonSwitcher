@@ -45,6 +45,11 @@ How to use
                                (for the pip summary: all outdated packages).
                                The commands work in PowerShell; commands
                                without quotes also work in the Command Prompt.
+  Several entries can be selected (Ctrl+click or Shift+click): they are then
+  checked again one after another, held or released together, and their
+  update commands are copied together (pip packages of one Python version as
+  one command). Several pip packages of one Python version can also be tested
+  together with a dry run.
   "Check this entry again" on a pip package also checks whether pip would
   really install the newer version (pip sometimes keeps the old version
   silently and still reports success) and updates the summary and the

@@ -229,6 +229,51 @@ public sealed class VersionChecker
         return await _pip.DryRunAsync(inst, wanted, ct);
     }
 
+    /// <summary>
+    /// Gemeinsamer Trockenlauf für mehrere markierte pip-Pakete derselben Python-Installation –
+    /// zeigt, ob die Updates zusammen funktionieren. Es wird nichts installiert.
+    /// </summary>
+    public async Task<PipScan.DryRunResult> DryRunPackagesAsync(IReadOnlyList<CheckItem> packages,
+        IReadOnlyList<Installation> installations, CancellationToken ct)
+    {
+        if (!CanDryRunTogether(packages))
+            throw new InvalidOperationException("A combined dry run needs pip packages of one Python installation that have newer versions.");
+        var root = packages[0].Target!.Root!;
+        var inst = Fresh(installations.Where(i => PathUtil.SameDirectory(i.Root, root)), ToolKind.Python).FirstOrDefault()
+                   ?? throw new InvalidOperationException("This Python installation is no longer available.");
+        var wanted = packages.ToDictionary(p => p.Target!.Package ?? p.Name, p => p.Latest);
+        return await _pip.DryRunAsync(inst, wanted, ct);
+    }
+
+    /// <summary>Lassen sich diese Zeilen gemeinsam per Trockenlauf testen? (pip-Pakete, eine Python-Version, neuere Version vorhanden)</summary>
+    public static bool CanDryRunTogether(IReadOnlyList<CheckItem> items) =>
+        items.Count > 0
+        && items.All(i => i.Target is { Kind: TargetKind.PipPackage, Root: not null } && i.Latest is not null
+                          && VersionCompare.Compare(i.Installed, i.Latest) < 0
+                          && !i.Hint.Contains("Not updatable with pip"))
+        && items.Select(i => PathUtil.Normalize(i.Target!.Root!)).Distinct().Count() == 1;
+
+    /// <summary>
+    /// Update-Befehle für mehrere Zeilen: pip-Pakete derselben Python-Version werden zu einem Befehl zusammengefasst,
+    /// alle anderen behalten ihren eigenen Befehl. Zeilen ohne Befehl werden übergangen.
+    /// </summary>
+    public static List<string> CombineCommands(IEnumerable<CheckItem> items)
+    {
+        var list = items.Where(i => !string.IsNullOrEmpty(i.UpdateCommand)).ToList();
+        var result = new List<string>();
+        // Einfache pip-Updates (ohne Bereichsangabe) je Python zusammenfassen
+        var simplePip = list.Where(i => i.Target is { Kind: TargetKind.PipPackage, Root: not null, Package: not null }
+                                        && i.UpdateCommand!.EndsWith(" --upgrade " + i.Target.Package, StringComparison.Ordinal))
+                            .ToList();
+        foreach (var g in simplePip.GroupBy(i => PathUtil.Normalize(i.Target!.Root!)))
+        {
+            var python = ToolDefinition.Python.MainExecutablePath(g.First().Target!.Root!);
+            result.Add(PipScan.UpgradeCommand(python, g.Select(i => i.Target!.Package!)));
+        }
+        result.AddRange(list.Except(simplePip).Select(i => i.UpdateCommand!).Distinct());
+        return result;
+    }
+
     private static async Task<T?> Try<T>(Func<Task<T>> f, CancellationToken ct) where T : class
     {
         try
