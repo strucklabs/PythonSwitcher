@@ -61,5 +61,9 @@ dotnet publish src/PythonSwitcher -p:PublishProfile=Dist
 ```
 
 Baut eine eigenständige Einzeldatei-EXE (win-x64, läuft ohne installiertes .NET) und legt
-`PythonSwitcher.zip` (Ordner `PythonSwitcher\` mit EXE und `README.txt`) **auf dem Desktop** ab;
+`PythonSwitcher.zip` (Ordner `PythonSwitcher\` mit EXE, `README.txt` und `LICENSE`) **auf dem Desktop** ab;
 eine vorhandene ZIP wird überschrieben.
+
+## Lizenz
+
+PythonSwitcher steht unter der MIT-Lizenz, siehe [`LICENSE`](LICENSE).

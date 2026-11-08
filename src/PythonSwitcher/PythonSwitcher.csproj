@@ -24,11 +24,12 @@
   <ItemGroup>
     <!-- Nur für das Weitergabe-Paket, nicht für den normalen Build -->
     <None Include="README.txt" CopyToOutputDirectory="Never" CopyToPublishDirectory="Always" ExcludeFromSingleFile="true" />
+    <None Include="..\..\LICENSE" Link="LICENSE" CopyToOutputDirectory="Never" CopyToPublishDirectory="Always" ExcludeFromSingleFile="true" />
   </ItemGroup>
 
   <!--
     Weitergabe-Paket: dotnet publish src\PythonSwitcher -p:PublishProfile=Dist
-    Danach liegt PythonSwitcher.zip (Ordner PythonSwitcher\ mit EXE und README.txt) auf dem Desktop.
+    Danach liegt PythonSwitcher.zip (Ordner PythonSwitcher\ mit EXE, README.txt und LICENSE) auf dem Desktop.
   -->
   <PropertyGroup>
     <DistDesktop>$([System.Environment]::GetFolderPath(SpecialFolder.DesktopDirectory))</DistDesktop>
@@ -37,7 +38,7 @@
 
   <Target Name="DistZipToDesktop" AfterTargets="Publish" Condition="'$(DistZip)' == 'true'">
     <ItemGroup>
-      <DistFiles Include="$(PublishDir)PythonSwitcher.exe;$(PublishDir)README.txt" />
+      <DistFiles Include="$(PublishDir)PythonSwitcher.exe;$(PublishDir)README.txt;$(PublishDir)LICENSE" />
     </ItemGroup>
     <RemoveDir Directories="$(DistStage)" />
     <Copy SourceFiles="@(DistFiles)" DestinationFolder="$(DistStage)PythonSwitcher\" />
