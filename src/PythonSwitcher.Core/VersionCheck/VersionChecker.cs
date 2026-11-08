@@ -19,6 +19,7 @@ public sealed class VersionChecker
     private readonly Func<IReadOnlyList<string>, ToolScan> _toolScan;
     private readonly Func<CancellationToken, Task<CheckContext>> _catalogs;
     private readonly Func<string, bool> _fileExists;
+    private readonly Func<IReadOnlyList<HeldPackage>> _holds;
 
     /// <param name="winget">Ersatz für "winget list" (Tests).</param>
     /// <param name="probe">Ersatz für das Auslesen der Version per "--version" (Tests).</param>
@@ -32,12 +33,14 @@ public sealed class VersionChecker
         PipScan? pip = null,
         Func<IReadOnlyList<string>, ToolScan>? toolScan = null,
         Func<CancellationToken, Task<CheckContext>>? catalogs = null,
-        Func<string, bool>? fileExists = null)
+        Func<string, bool>? fileExists = null,
+        Func<IReadOnlyList<HeldPackage>>? holds = null)
     {
         _paths = paths;
         _winget = winget ?? Winget.ListAsync;
         _probe = probe ?? ((tool, root) => VersionProbe.Read(tool, root));
-        _pip = pip ?? new PipScan();
+        _holds = holds ?? (() => []);
+        _pip = pip ?? new PipScan(holds: _holds);
         _toolScan = toolScan ?? DefaultToolScan;
         _catalogs = catalogs ?? LoadCatalogsAsync;
         _fileExists = fileExists ?? File.Exists;
@@ -117,7 +120,8 @@ public sealed class VersionChecker
 
         Context = ctx;
         progress.Report("Done.");
-        return result;
+        var holds = _holds();
+        return result.Select(i => HoldRules.Apply(i, holds)).ToList();
     }
 
     /// <summary>
@@ -125,6 +129,13 @@ public sealed class VersionChecker
     /// Installationen mehrere, bei der pip-Übersicht alle Zeilen dieser Python-Version.
     /// </summary>
     public async Task<List<CheckItem>> RecheckAsync(CheckItem item, IReadOnlyList<Installation> installations, CancellationToken ct)
+    {
+        var rows = await RecheckCoreAsync(item, installations, ct);
+        var holds = _holds();
+        return rows.Select(i => HoldRules.Apply(i, holds)).ToList();
+    }
+
+    private async Task<List<CheckItem>> RecheckCoreAsync(CheckItem item, IReadOnlyList<Installation> installations, CancellationToken ct)
     {
         var target = item.Target ?? throw new InvalidOperationException("This entry cannot be checked individually.");
         var ctx = Context ??= new CheckContext();

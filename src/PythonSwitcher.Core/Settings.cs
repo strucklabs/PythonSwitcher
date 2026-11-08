@@ -27,12 +27,52 @@ public sealed class Installation
     public string? InstallerPath { get; set; }
 }
 
+/// <summary>Ein festgehaltenes Paket in einer bestimmten Python-Installation.</summary>
+public sealed class HeldPackage
+{
+    public const string KindPip = "pip";
+    public const string KindRuntime = "runtime";
+    public const string KindTool = "tool";
+
+    /// <summary>Art des Eintrags: pip-Paket, Python-/Git-Installation oder Werkzeug/Editor/Sprache.</summary>
+    public string Kind { get; set; } = KindPip;
+    /// <summary>Python-Installation (pip), Installationsordner (runtime) oder leer (tool).</summary>
+    public string Root { get; set; } = "";
+    /// <summary>Paketname (pip), "Python"/"Git" (runtime) oder Katalogname (tool).</summary>
+    public string Package { get; set; } = "";
+    /// <summary>Version beim Festhalten (nur zur Information).</summary>
+    public string? Version { get; set; }
+    public string? Reason { get; set; }
+    public DateTime Since { get; set; }
+
+    /// <summary>Paketnamen vergleichen wie pip: Groß/klein sowie "-", "_" und "." gelten als gleich.</summary>
+    public static bool SameName(string a, string b) => Norm(a) == Norm(b);
+
+    private static string Norm(string n) => System.Text.RegularExpressions.Regex.Replace(n.ToLowerInvariant(), "[-_.]+", "-");
+
+    public string Describe() =>
+        $"Held by you at {Version ?? "the installed version"} since {Since:yyyy-MM-dd}" +
+        (string.IsNullOrWhiteSpace(Reason) ? "" : $": {Reason.Trim()}") +
+        ". It is not offered as an update. Use \"Release hold\" to allow updates again.";
+
+    /// <summary>Bei Werkzeugen ist Root die Datei bzw. der Anzeigename (unterscheidet mehrere Kopien), sonst ein Ordner.</summary>
+    public bool Matches(string kind, string root, string package) =>
+        Kind == kind && SameName(Package, package)
+        && (kind == KindTool ? string.Equals(Root, root, StringComparison.OrdinalIgnoreCase) : PathUtil.SameDirectory(Root, root));
+}
+
 public sealed class AppSettings
 {
     public List<Installation> Installations { get; set; } = [];
 
     /// <summary>Ausgetragene Stammordner; die automatische Suche nimmt sie nicht wieder auf.</summary>
     public List<string> Ignored { get; set; } = [];
+
+    /// <summary>Vom Benutzer festgehaltene pip-Pakete (z. B. numpy 1.26.4, weil torch 2.3 numpy 1.x braucht).</summary>
+    public List<HeldPackage> Holds { get; set; } = [];
+
+    public HeldPackage? FindHold(string kind, string root, string package) =>
+        Holds.FirstOrDefault(h => h.Matches(kind, root, package));
 
     public const int DefaultBackupLimit = 50;
     public const int MinBackupLimit = 1;

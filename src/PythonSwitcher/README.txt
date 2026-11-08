@@ -34,6 +34,13 @@ How to use
                                pulled in, downgrades and replaced special
                                builds such as CUDA builds) without
                                installing anything.
+    "Hold this version …"    - keeps an entry at its current version (pip
+                               package, Python/Git installation, tool,
+                               editor or language), optionally with a
+                               reason. Held entries are not offered as
+                               updates, are left out of the summary command,
+                               and updates that would change them are
+                               blocked. "Release hold" undoes this.
     "Copy update command"    - copies the command that updates this entry
                                (for the pip summary: all outdated packages).
                                The commands work in PowerShell; commands

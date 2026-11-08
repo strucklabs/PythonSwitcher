@@ -20,12 +20,19 @@ public sealed class PipScan
 
     /// <param name="run">Ersatz für den Programmaufruf (Tests).</param>
     /// <param name="readFile">Ersatz für das Lesen von Dateien, hier der Markierung EXTERNALLY-MANAGED (Tests).</param>
+    private readonly Func<IReadOnlyList<HeldPackage>> _holds;
+
+    /// <param name="holds">Vom Benutzer festgehaltene Pakete (aus den Einstellungen).</param>
     public PipScan(Func<string, IReadOnlyList<string>, int, CancellationToken, Task<RunResult?>>? run = null,
-        Func<string, string?>? readFile = null)
+        Func<string, string?>? readFile = null, Func<IReadOnlyList<HeldPackage>>? holds = null)
     {
         _run = run ?? RunAsync;
         _readFile = readFile ?? (f => File.Exists(f) ? File.ReadAllText(f) : null);
+        _holds = holds ?? (() => []);
     }
+
+    private HeldPackage? HoldFor(string root, string package) =>
+        _holds().FirstOrDefault(h => h.Matches(HeldPackage.KindPip, root, package));
 
     /// <summary>
     /// Ist diese Python als "extern verwaltet" markiert (PEP 668, z. B. von uv), lehnt pip Änderungen ab.
@@ -110,6 +117,15 @@ public sealed class PipScan
             {
                 result.Add(new CheckItem(CheckCategory.PipPaket, group, p.Name, p.Version, latest, CheckStatus.Hinweis,
                     "Newer version available. " + ManagedHint(managed), null, inst.Root, Target: target));
+            }
+            else if (HoldFor(inst.Root, p.Name) is { } hold)
+            {
+                // Vom Benutzer festgehalten: nie als Update anbieten
+                result.Add(latest is not null
+                    ? new CheckItem(CheckCategory.PipPaket, group, p.Name, p.Version, latest, CheckStatus.Hinweis,
+                        hold.Describe(), null, inst.Root, Target: target)
+                    : new CheckItem(CheckCategory.PipPaket, group, p.Name, p.Version, p.Version, CheckStatus.Aktuell,
+                        "", hold.Describe(), inst.Root, Target: target));
             }
             else if (latest is not null && SpecialBuildNote(p.Version, latest) is { } special)
             {
@@ -243,7 +259,9 @@ public sealed class PipScan
         var problems = new List<string>();
         foreach (var c in r.Changes)
         {
-            if (c.From is not null && SpecialBuildNote(c.From, c.To) is not null)
+            if (c.From is not null && HoldFor(inst.Root, c.Package) is not null)
+                problems.Add($"it would change {c.Package} {c.From} → {c.To}, which you hold");
+            else if (c.From is not null && SpecialBuildNote(c.From, c.To) is not null)
                 problems.Add($"it would replace the special build {c.Package} {c.From} with the standard build {c.To} (for example losing GPU support)");
             else if (c.Kind == ChangeKind.Downgrade)
                 problems.Add($"it would downgrade {c.Package} {c.From} → {c.To}");
@@ -297,8 +315,14 @@ public sealed class PipScan
             return previous with { Installed = null, Status = CheckStatus.Hinweis, Hint = "The package is no longer installed.", UpdateCommand = null };
 
         var cmp = VersionCompare.Compare(found.Version, previous.Latest);
+        if (HoldFor(inst.Root, package) is { } hold)
+        {
+            return cmp is >= 0
+                ? previous with { Installed = found.Version, Status = CheckStatus.Aktuell, Hint = "", Note = hold.Describe(), UpdateCommand = null }
+                : previous with { Installed = found.Version, Status = CheckStatus.Hinweis, Hint = hold.Describe(), Note = null, UpdateCommand = null };
+        }
         if (cmp is >= 0)
-            return previous with { Installed = found.Version, Status = CheckStatus.Aktuell, Hint = "", UpdateCommand = null };
+            return previous with { Installed = found.Version, Status = CheckStatus.Aktuell, Hint = "", Note = null, UpdateCommand = null };
         if (ExternallyManaged(inst.Root) is { } managed)
             return previous with { Installed = found.Version, Status = CheckStatus.Hinweis, Hint = "Newer version available. " + ManagedHint(managed), UpdateCommand = null };
         if (SpecialBuildNote(found.Version, previous.Latest) is { } special)
@@ -763,18 +787,21 @@ public sealed class PipScan
         var python = ToolDefinition.Python.MainExecutablePath(root);
         var outdated = pkgs.Where(r => r.Status == CheckStatus.UpdateVerfuegbar).OrderBy(r => r.Name, StringComparer.OrdinalIgnoreCase).ToList();
         int current = pkgs.Count(r => r.Status == CheckStatus.Aktuell);
-        int blocked = pkgs.Count(r => r.Status == CheckStatus.Hinweis && VersionCompare.Compare(r.Installed, r.Latest) < 0);
+        bool IsHeld(CheckItem r) => r.Hint.StartsWith("Held by you", StringComparison.Ordinal);
+        int held = pkgs.Count(r => r.Status == CheckStatus.Hinweis && IsHeld(r));
+        int blocked = pkgs.Count(r => r.Status == CheckStatus.Hinweis && !IsHeld(r) && VersionCompare.Compare(r.Installed, r.Latest) < 0);
         int n = pkgs.Count;
 
-        string hint = outdated.Count == 0 && blocked == 0
+        string hint = outdated.Count == 0 && blocked == 0 && held == 0
             ? $"All {n} packages are up to date."
             : $"{outdated.Count} of {n} packages are outdated, {current} up to date" +
-              (blocked > 0 ? $", {blocked} need attention (see their rows)" : "") + "." +
+              (blocked > 0 ? $", {blocked} need attention (see their rows)" : "") +
+              (held > 0 ? $", {held} held by you" : "") + "." +
               (outdated.Count > 0 ? " The update command updates all outdated ones." : "");
         return summary with
         {
             Installed = $"{n} installed",
-            Status = outdated.Count > 0 ? CheckStatus.UpdateVerfuegbar : blocked > 0 ? CheckStatus.Hinweis : CheckStatus.Aktuell,
+            Status = outdated.Count > 0 ? CheckStatus.UpdateVerfuegbar : blocked > 0 || held > 0 ? CheckStatus.Hinweis : CheckStatus.Aktuell,
             Hint = hint,
             UpdateCommand = outdated.Count > 0 ? UpgradeCommand(python, outdated.Select(r => r.Target?.Package ?? r.Name)) : null,
         };

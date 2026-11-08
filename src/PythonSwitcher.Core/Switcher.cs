@@ -219,6 +219,29 @@ public sealed class Switcher
         return true;
     }
 
+    /// <summary>Hält einen Eintrag fest (ersetzt ein vorhandenes Festhalten desselben Eintrags).</summary>
+    public HeldPackage Hold(string kind, string root, string package, string? version, string? reason)
+    {
+        Settings.Holds.RemoveAll(h => h.Matches(kind, root, package));
+        var hold = new HeldPackage
+        {
+            Kind = kind, Root = root, Package = package, Version = version,
+            Reason = string.IsNullOrWhiteSpace(reason) ? null : reason.Trim(), Since = DateTime.Now,
+        };
+        Settings.Holds.Add(hold);
+        _store.Save(Settings);
+        return hold;
+    }
+
+    /// <summary>Gibt einen festgehaltenen Eintrag wieder frei. Liefert false, wenn er nicht festgehalten war.</summary>
+    public bool Release(string kind, string root, string package)
+    {
+        int removed = Settings.Holds.RemoveAll(h => h.Matches(kind, root, package));
+        if (removed > 0)
+            _store.Save(Settings);
+        return removed > 0;
+    }
+
     /// <summary>Nimmt eine Installation aus der Liste; die automatische Suche nimmt sie danach nicht wieder auf.</summary>
     public void Unregister(Installation installation)
     {

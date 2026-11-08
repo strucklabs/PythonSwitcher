@@ -43,7 +43,7 @@ public partial class VersionCheckPanel : UserControl
 {
     private readonly Switcher _switcher;
     private readonly MainWindow _main;
-    private readonly VersionChecker _checker = new(new RegistryPathStore());
+    private readonly VersionChecker _checker;
     private CancellationTokenSource? _cts;
     private List<CheckRow> _rows = [];
     private bool _busy;
@@ -52,6 +52,8 @@ public partial class VersionCheckPanel : UserControl
     {
         _switcher = switcher;
         _main = main;
+        // Festgehaltene Einträge als Kopie übergeben: die Prüfung läuft im Hintergrund
+        _checker = new VersionChecker(new RegistryPathStore(), holds: () => _switcher.Settings.Holds.ToList());
         InitializeComponent();
         ProgressText.Text = "Not checked yet.";
     }
@@ -123,6 +125,12 @@ public partial class VersionCheckPanel : UserControl
     {
         if (_busy || List.SelectedItem is not CheckRow { Item.Target: not null } row)
             return;
+        await RecheckRowAsync(row);
+    }
+
+    /// <summary>Einzelprüfung einer Zeile (auch nach Festhalten/Freigeben, damit Status und Übersicht stimmen).</summary>
+    private async Task RecheckRowAsync(CheckRow row)
+    {
         _cts = new CancellationTokenSource();
         SetBusy(true);
         ProgressText.Text = $"Checking \"{row.Name}\" again …";
@@ -284,6 +292,29 @@ public partial class VersionCheckPanel : UserControl
         RecheckItem.IsEnabled = !_busy && row?.Item.Target is not null;
         DryRunItem.IsEnabled = !_busy && CanDryRun(row?.Item);
         CopyCommandItem.IsEnabled = !string.IsNullOrEmpty(row?.Item.UpdateCommand);
+        bool held = row is not null && HoldRules.Find(row.Item, _switcher.Settings.Holds) is not null;
+        HoldItem.Header = held ? "Release hold" : "Hold this version …";
+        HoldItem.IsEnabled = !_busy && row is not null && HoldRules.KeyFor(row.Item) is not null;
+    }
+
+    private async void Hold_Click(object sender, RoutedEventArgs e)
+    {
+        if (_busy || List.SelectedItem is not CheckRow row || HoldRules.KeyFor(row.Item) is not { } key)
+            return;
+        if (HoldRules.Find(row.Item, _switcher.Settings.Holds) is not null)
+        {
+            _switcher.Release(key.Kind, key.Root, key.Package);
+            _main.SetStatus($"\"{row.Name}\" is no longer held.");
+        }
+        else
+        {
+            var dialog = new HoldDialog(row.Name, row.Item.Installed) { Owner = _main };
+            if (dialog.ShowDialog() != true)
+                return;
+            _switcher.Hold(key.Kind, key.Root, key.Package, row.Item.Installed, dialog.Reason);
+            _main.SetStatus($"\"{row.Name}\" is now held at {row.Item.Installed}.");
+        }
+        await RecheckRowAsync(row);
     }
 
     private void CopyCommand_Click(object sender, RoutedEventArgs e)
