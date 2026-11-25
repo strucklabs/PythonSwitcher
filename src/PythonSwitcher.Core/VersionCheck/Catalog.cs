@@ -43,6 +43,12 @@ public sealed class CatalogEntry
     /// </summary>
     public bool MapFilesByVersion { get; init; }
 
+    /// <summary>
+    /// Updates werden neben der alten Version installiert (z. B. .NET SDK). Ältere Kopien sind dann kein
+    /// Update-Fall, sondern ein Hinweis, dass sie entfernt werden können.
+    /// </summary>
+    public bool SideBySide { get; init; }
+
     /// <summary>winget-IDs, die trotz passendem Muster nicht zu diesem Eintrag gehören.</summary>
     public IReadOnlyList<string> ExcludeIds { get; init; } = [];
 
@@ -106,7 +112,8 @@ public static class Catalog
         new() { Category = CheckCategory.Sprache, Name = "Java",
             WingetIds = ["Oracle.JavaRuntimeEnvironment", "Oracle.JDK.*", "EclipseAdoptium.Temurin.*", "Microsoft.OpenJDK.*", "Azul.Zulu.*", "Amazon.Corretto.*"],
             NamePatterns = [@"^Java \d+ Update", @"^Java\(TM\) SE", @"^Eclipse Temurin", @"^Microsoft Build of OpenJDK"] },
-        new() { Category = CheckCategory.Sprache, Name = ".NET SDK", WingetIds = ["Microsoft.DotNet.SDK.*"], NamePatterns = [@"^Microsoft \.NET SDK"] },
+        new() { Category = CheckCategory.Sprache, Name = ".NET SDK", WingetIds = ["Microsoft.DotNet.SDK.*"], NamePatterns = [@"^Microsoft \.NET SDK"],
+            SideBySide = true },
         new() { Category = CheckCategory.Sprache, Name = "Rust", WingetIds = ["Rustlang.Rustup", "Rustlang.Rust.*"],
             Command = "rustc", UpdateCommand = "rustup update" },
         new() { Category = CheckCategory.Sprache, Name = "Go", WingetIds = ["GoLang.Go"], NamePatterns = [@"^Go Programming Language"], Command = "go", VersionArgs = "version" },

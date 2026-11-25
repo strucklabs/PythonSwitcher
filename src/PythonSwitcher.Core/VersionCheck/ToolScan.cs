@@ -151,7 +151,8 @@ public sealed class ToolScan
                         .Where(v => v is not null)
                         .Aggregate((string?)null, (best, v) => best is null || VersionCompare.Compare(v, best) > 0 ? v : best);
                     string? file = files.FirstOrDefault(f => VersionCompare.Compare(_fileVersion(f), p.Version) == 0);
-                    result.Add(FromWinget(entry, group, p, sameId.Count, newest, file, files));
+                    var others = sameId.Where(m => !ReferenceEquals(m, p)).Select(m => m.Version).ToList();
+                    result.Add(FromWinget(entry, group, p, sameId.Count, newest, file, files, others));
                 }
                 continue;
             }
@@ -185,8 +186,27 @@ public sealed class ToolScan
     }
 
     private static CheckItem FromWinget(CatalogEntry entry, string group, WingetPackage p,
-        int copies, string? newest, string? file, IReadOnlyList<string> files)
+        int copies, string? newest, string? file, IReadOnlyList<string> files, IReadOnlyList<string?>? otherCopies = null)
     {
+        otherCopies ??= [];
+        // Nebeneinander installierte Versionen (z. B. .NET SDK): Gibt es schon eine neuere Kopie, ist diese hier eine ältere,
+        // die ein Update nicht ersetzt – also kein Update-Fall, sondern ein Hinweis.
+        string? newerCopy = entry.SideBySide && !p.Uncertain
+            ? otherCopies.Where(v => VersionCompare.Compare(v, p.Version) > 0)
+                .Aggregate((string?)null, (best, v) => best is null || VersionCompare.Compare(v, best) > 0 ? v : best)
+            : null;
+        if (newerCopy is not null)
+        {
+            var sideNotes = new List<string>();
+            if (entry.Note is not null)
+                sideNotes.Add(entry.Note);
+            return new CheckItem(entry.Category, group, entry.Name, p.Version, newest, CheckStatus.Hinweis,
+                $"Older copy: version {newerCopy} is installed next to it. Updates are installed side by side and do not " +
+                "replace this copy. The newest version is used unless a project asks for this one (global.json). " +
+                $"If no project needs it, it can be removed: winget uninstall --id {p.Id} --version {p.Version}",
+                sideNotes.Count == 0 ? null : string.Join("\n", sideNotes), file ?? p.Name, null,
+                new CheckTarget(TargetKind.Tool, CatalogName: entry.Name));
+        }
         CheckStatus status;
         string hint;
         string? latest;
@@ -224,7 +244,13 @@ public sealed class ToolScan
                 ? $"File: {file} – used by the \"{entry.Command}\" command."
                 : $"File: {file} – not used, because {files[0]} is found first.");
         }
-        if (copies > 1)
+        if (copies > 1 && entry.SideBySide)
+        {
+            var older = otherCopies.Where(v => VersionCompare.Compare(v, p.Version) < 0).ToList();
+            if (older.Count > 0)
+                notes.Add($"Also installed: {string.Join(", ", older)} (older {(older.Count == 1 ? "copy" : "copies")}, kept side by side).");
+        }
+        else if (copies > 1)
         {
             notes.Add($"Installed {copies} times under the same winget ID ({p.Id}). winget may update only one copy; " +
                       "use \"Check this entry again\" afterwards.");

@@ -91,6 +91,9 @@ Good to know
   this program; update or remove them with uv.
 - The version check marks programs that are installed several times under the
   same winget ID, and for the py launcher it shows which file is actually used.
+- Some programs install updates next to the old version instead of replacing
+  it (for example the .NET SDK). Older copies are then shown as a note with
+  the command to remove them, not as an update.
 - Changes apply to terminals and programs started afterwards. Windows that
   are already open keep their previous state.
 - Windows reads the system PATH (applies to all users) first, then the user
