@@ -1,6 +1,6 @@
 # Plan: Zertifikatsprüfung im Versionscheck
 
-Stand: 25.11.2026 – **freigegeben und umgesetzt** (offene Fragen von Marco an Claude übergeben, entschieden siehe unten)
+Stand: 25.11.2026 – **freigegeben, umgesetzt und abgenommen** (offene Fragen von Marco an Claude übergeben, entschieden siehe unten)
 
 ## Ergebnis (25.11.2026)
 
@@ -10,7 +10,13 @@ Stand: 25.11.2026 – **freigegeben und umgesetzt** (offene Fragen von Marco an 
 - Git (schannel), Node.js, Java (107 Zertifikate, 5 abgelaufen – von Oracle mitgeliefert, kein Handlungsbedarf),
   Windows-Speicher (77, davon 14 abgelaufene Altlasten): in Ordnung.
 - 178 Tests grün (20 neue in CertScanTests).
-- Offen: Abnahmekriterium 1 zweiter Teil (php.ini von Hand ändern, dann „Check this entry again“) – macht Marco selbst.
+- Abnahmekriterium 1 vollständig erfüllt: Marco hat nach der Anleitung cacert.pem heruntergeladen und
+  curl.cainfo/openssl.cafile in der php.ini gesetzt; „Check this entry again“ zeigt PHP danach als `up to date`.
+  Stolperstelle dabei: Die Pfade wurden zunächst in die vorhandenen Beispielzeilen eingesetzt, die noch mit `;`
+  auskommentiert waren – der Checker meldete deshalb zu Recht weiter `problem`. Eine eigene Erkennung
+  auskommentierter Einträge wurde besprochen und als nicht nötig verworfen.
+- Nachträge: „Copy hint“ im Kontextmenü (lange Pfade kopieren statt abtippen), PHP-Anleitung zeilenweise;
+  Statuszeilen zeigen nach einer Einzelprüfung nur den Status und sind auf drei Zeilen begrenzt.
 
 ## Ziel
 
