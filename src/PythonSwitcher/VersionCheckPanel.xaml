@@ -11,7 +11,8 @@
                 <CheckBox x:Name="OnlyUpdates" Content="Show only entries with updates" VerticalAlignment="Center" Margin="8,0,0,8"
                           Checked="Filter_Changed" Unchecked="Filter_Changed" />
             </WrapPanel>
-            <TextBlock x:Name="ProgressText" TextWrapping="Wrap" />
+            <TextBlock x:Name="ProgressText" TextWrapping="Wrap" MaxHeight="54" TextTrimming="CharacterEllipsis"
+                       ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}" />
         </StackPanel>
 
         <ListView x:Name="List" ScrollViewer.HorizontalScrollBarVisibility="Disabled" ContextMenuOpening="List_ContextMenuOpening">

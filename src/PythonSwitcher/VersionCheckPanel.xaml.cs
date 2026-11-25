@@ -160,7 +160,8 @@ public partial class VersionCheckPanel : UserControl
                 {
                     CheckStatus.Aktuell => $"up to date ({main.Installed})",
                     CheckStatus.UpdateVerfuegbar => $"update still available ({main.Installed} → {main.Latest})",
-                    _ => main.Hint,
+                    // Hinweise können lang sein (Pfade, Anleitungen) – sie stehen in der Liste, hier nur der Status
+                    _ => new CheckRow(main).StatusText + (main.Installed is null ? "" : $" ({main.Installed})") + " – see the hint in the list",
                 };
             ProgressText.Text = $"Checked \"{row.Name}\" again at {DateTime.Now.ToString(MainWindow.TimeFormat)}: {result}";
             _main.SetStatus(ProgressText.Text);

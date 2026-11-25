@@ -17,7 +17,8 @@
                              AutomationProperties.Name="Backups to keep" MaxLength="4"
                              KeyDown="BackupLimit_KeyDown" LostFocus="BackupLimit_LostFocus" />
                 </StackPanel>
-                <TextBlock x:Name="StatusText" VerticalAlignment="Center" TextWrapping="Wrap" />
+                <TextBlock x:Name="StatusText" VerticalAlignment="Center" TextWrapping="Wrap" MaxHeight="54" TextTrimming="CharacterEllipsis"
+                           ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}" />
             </DockPanel>
         </Border>
         <TabControl x:Name="Tabs" Margin="0,0,0,8" />
