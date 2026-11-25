@@ -20,6 +20,7 @@ public sealed class VersionChecker
     private readonly Func<CancellationToken, Task<CheckContext>> _catalogs;
     private readonly Func<string, bool> _fileExists;
     private readonly Func<IReadOnlyList<HeldPackage>> _holds;
+    private readonly CertScan _certs;
 
     /// <param name="winget">Ersatz für "winget list" (Tests).</param>
     /// <param name="probe">Ersatz für das Auslesen der Version per "--version" (Tests).</param>
@@ -34,7 +35,8 @@ public sealed class VersionChecker
         Func<IReadOnlyList<string>, ToolScan>? toolScan = null,
         Func<CancellationToken, Task<CheckContext>>? catalogs = null,
         Func<string, bool>? fileExists = null,
-        Func<IReadOnlyList<HeldPackage>>? holds = null)
+        Func<IReadOnlyList<HeldPackage>>? holds = null,
+        CertScan? certs = null)
     {
         _paths = paths;
         _winget = winget ?? Winget.ListAsync;
@@ -44,6 +46,7 @@ public sealed class VersionChecker
         _toolScan = toolScan ?? DefaultToolScan;
         _catalogs = catalogs ?? LoadCatalogsAsync;
         _fileExists = fileExists ?? File.Exists;
+        _certs = certs ?? CertScan.ForSystem(paths, _pip.ExternallyManaged, _holds);
     }
 
     private static async Task<CheckContext> LoadCatalogsAsync(CancellationToken ct) => new()
@@ -117,6 +120,9 @@ public sealed class VersionChecker
             progress.Report($"Checking pip packages of Python {pythons[i].Version} ({i + 1} of {pythons.Count}) …");
             result.AddRange(await _pip.ScanAsync(pythons[i], ct));
         }
+
+        progress.Report("Checking certificates and secure connections …");
+        result.AddRange(await _certs.ScanAsync(pythons, gits, ct));
 
         Context = ctx;
         progress.Report("Done.");
@@ -202,6 +208,9 @@ public sealed class VersionChecker
                     _ => await _pip.ScanAsync(inst, ct),
                 };
             }
+
+            case TargetKind.Certificate:
+                return await _certs.RecheckAsync(item, installations, _probe, ct);
 
             default:
                 throw new InvalidOperationException("This entry cannot be checked individually.");

@@ -42,7 +42,8 @@ public class RecheckTests
                 : args.Contains("--outdated") ? PipOutdated : PipList, ""))),
             toolScan: roots => new ToolScan(_ => null, (_, _) => null, (_, _) => Task.FromResult<string?>(null), roots),
             catalogs: _ => Task.FromResult(Catalogs()),
-            fileExists: _ => true);
+            fileExists: _ => true,
+            certs: new CertScan());
     }
 
     private static Task<List<CheckItem>> Run(VersionChecker c) => c.RunAsync(Installed(), new Progress<string>(), default);

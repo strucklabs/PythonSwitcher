@@ -74,6 +74,29 @@ How to use
   Python installations marked as "externally managed" (for example by uv)
   show newer package versions only as a note, without an update command,
   because pip refuses to change them.
+  "Certificates" (part of the version check) shows whether Python and the
+  other checked programs can verify secure connections (HTTPS), and whether
+  their certificate collections are outdated:
+    - Python: a short connection test to pypi.org per version, the OpenSSL
+      version (OpenSSL 1.1 no longer receives security updates), the certifi
+      package (used by requests and many others), pip's own certificates and
+      the pip setting "cert".
+    - Git: whether it uses the Windows certificate store (schannel) or its
+      own file, plus a connection test to github.com.
+    - Java: its own certificate list (cacerts), read without a password.
+    - Node.js: its built-in list and a connection test; the npm setting
+      "cafile".
+    - PHP: whether curl can verify secure connections. Without a certificate
+      file (php.ini settings curl.cainfo/openssl.cafile) it cannot; the hint
+      explains how to fix this, and "Copy update command" copies the command
+      that downloads a current file. php.ini is never changed by this program.
+    - Environment variables that redirect certificates (for example
+      SSL_CERT_FILE or REQUESTS_CA_BUNDLE), if set.
+    - The Windows certificate store. Windows Update keeps it up to date. The
+      expired certificates it contains are old ones that Windows keeps on
+      purpose; they are not used and should not be deleted.
+  Programs not listed (for example .NET, Go and Rust) use the Windows
+  certificate store. Status "problem" means secure connections fail.
 - Remove: Removes a version from the list. Only versions downloaded with this
   program can optionally be deleted as well. Before removing, the program
   looks for virtual environments (projects) in your user folder that were

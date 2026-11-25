@@ -25,7 +25,7 @@ public sealed class CheckRow(CheckItem item)
         CheckStatus.UpdateVerfuegbar => "update available",
         CheckStatus.Aktuell => "up to date",
         CheckStatus.Unbekannt => "unknown",
-        CheckStatus.Problem => "conflict",
+        CheckStatus.Problem => item.Category == CheckCategory.Zertifikate ? "problem" : "conflict",
         _ => "note",
     };
 
@@ -86,12 +86,16 @@ public partial class VersionCheckPanel : UserControl
             _rows = items.Select(i => new CheckRow(i)).ToList();
             ApplyFilter();
             TakeOverVersions(items);
-            int updates = _rows.Count(r => r.IsUpdate && r.Item.Category != CheckCategory.PipPaket);
+            int updates = _rows.Count(r => r.IsUpdate && r.Item.Category is not (CheckCategory.PipPaket or CheckCategory.Zertifikate));
             int pipUpdates = _rows.Count(r => r.IsUpdate && r.Item.Target?.Kind == TargetKind.PipPackage);
-            int problems = _rows.Count(r => r.Item.Status == CheckStatus.Problem && r.Name != PipScan.DependenciesName);
+            int problems = _rows.Count(r => r.Item.Status == CheckStatus.Problem && r.Name != PipScan.DependenciesName
+                                            && r.Item.Category != CheckCategory.Zertifikate);
+            int certProblems = _rows.Count(r => r.Item.Category == CheckCategory.Zertifikate
+                                                && r.Item.Status is CheckStatus.Problem or CheckStatus.UpdateVerfuegbar);
             var text = $"Checked on {started.ToString(MainWindow.TimeFormat)} ({(DateTime.Now - started).TotalSeconds:0} s): " +
                        $"{updates} program(s) with updates, {pipUpdates} outdated pip package(s)" +
-                       (problems > 0 ? $", {problems} dependency problem(s)." : ".");
+                       (problems > 0 ? $", {problems} dependency problem(s)" : "") +
+                       (certProblems > 0 ? $", {certProblems} certificate issue(s)." : ".");
             ProgressText.Text = text;
             _main.SetStatus("Version check finished. " + text);
         }

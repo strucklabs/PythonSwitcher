@@ -41,6 +41,8 @@ public enum TargetKind
     PipSummary,
     /// <summary>Abhängigkeitsprüfung (pip check) einer Python-Installation.</summary>
     PipCheck,
+    /// <summary>Zertifikatsprüfung einer Quelle (CatalogName: python, git, java, node, php, env, windows).</summary>
+    Certificate,
 }
 
 /// <summary>Ziel einer Einzelprüfung.</summary>
@@ -53,6 +55,7 @@ public sealed record CheckTarget(TargetKind Kind, ToolKind? Tool = null, string?
         TargetKind.Tool => $"tool|{CatalogName}",
         TargetKind.PipPackage => $"pip|{PathUtil.Normalize(Root ?? "")}|{Package?.ToLowerInvariant()}",
         TargetKind.PipCheck => $"pipcheck|{PathUtil.Normalize(Root ?? "")}",
+        TargetKind.Certificate => $"cert|{CatalogName}|{PathUtil.Normalize(Root ?? "")}",
         _ => $"pipall|{PathUtil.Normalize(Root ?? "")}",
     };
 }
@@ -124,6 +127,7 @@ public sealed class ToolScan
         CheckCategory.Editor => "Editors and IDEs",
         CheckCategory.Sprache => "Languages and runtimes",
         CheckCategory.PipPaket => "pip packages",
+        CheckCategory.Zertifikate => CertScan.GroupTitle,
         _ => c.ToString(),
     };
 

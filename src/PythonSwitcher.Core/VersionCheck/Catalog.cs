@@ -10,6 +10,7 @@ public enum CheckCategory
     Editor,
     Sprache,
     PipPaket,
+    Zertifikate,
 }
 
 /// <summary>Ein bekanntes Programm, nach dem gesucht wird.</summary>

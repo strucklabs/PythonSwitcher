@@ -832,7 +832,7 @@ public sealed class PipScan
 
     private static string FirstLine(string s) => s.Trim().Split('\n').LastOrDefault()?.Trim() ?? "";
 
-    private static async Task<RunResult?> RunAsync(string exe, IReadOnlyList<string> args, int timeoutMs, CancellationToken ct)
+    internal static async Task<RunResult?> RunAsync(string exe, IReadOnlyList<string> args, int timeoutMs, CancellationToken ct)
     {
         if (!File.Exists(exe))
             return null;
@@ -851,6 +851,7 @@ public sealed class PipScan
         psi.Environment["PYTHONIOENCODING"] = "utf-8";
         psi.Environment["PIP_DISABLE_PIP_VERSION_CHECK"] = "1";
         psi.Environment["PIP_NO_INPUT"] = "1";
+        psi.Environment["GIT_TERMINAL_PROMPT"] = "0";
         try
         {
             using var p = Process.Start(psi);
