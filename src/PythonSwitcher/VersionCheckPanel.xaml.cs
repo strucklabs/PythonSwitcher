@@ -325,6 +325,38 @@ public partial class VersionCheckPanel : UserControl
         int commands = VersionChecker.CombineCommands(items).Count;
         CopyCommandItem.Header = commands > 1 ? Count("Copy update commands", commands) : "Copy update command";
         CopyCommandItem.IsEnabled = commands > 0;
+
+        int hints = items.Count(i => HintText(i) is not null);
+        CopyHintItem.Header = hints > 1 ? Count("Copy hints", hints) : "Copy hint";
+        CopyHintItem.IsEnabled = hints > 0;
+    }
+
+    /// <summary>Hinweis und Notiz einer Zeile als Text; null, wenn es keinen gibt.</summary>
+    private static string? HintText(CheckItem item)
+    {
+        var parts = new[] { item.Hint, item.Note }.Where(t => !string.IsNullOrWhiteSpace(t)).Select(t => t!.Trim()).ToList();
+        return parts.Count == 0 ? null : string.Join(Environment.NewLine, parts);
+    }
+
+    private void CopyHint_Click(object sender, RoutedEventArgs e)
+    {
+        var items = SelectedRows().Select(r => r.Item).Where(i => HintText(i) is not null).ToList();
+        if (items.Count == 0)
+            return;
+        // Eine Zeile: nur der Text. Mehrere: jeweils mit Namen und Status davor, durch Leerzeilen getrennt.
+        var text = items.Count == 1
+            ? HintText(items[0])!
+            : string.Join(Environment.NewLine + Environment.NewLine,
+                items.Select(i => $"{i.Name} ({new CheckRow(i).StatusText}){Environment.NewLine}{HintText(i)}"));
+        try
+        {
+            Clipboard.SetText(text);
+            _main.SetStatus(items.Count == 1 ? "Hint copied to the clipboard." : $"{items.Count} hints copied to the clipboard.");
+        }
+        catch (Exception)
+        {
+            _main.SetStatus("The clipboard is busy. Please try again.");
+        }
     }
 
     private async void Recheck_Click(object sender, RoutedEventArgs e)

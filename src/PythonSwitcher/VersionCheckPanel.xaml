@@ -31,6 +31,7 @@
                     <MenuItem x:Name="HoldItem" Header="Hold this version …" Click="Hold_Click" />
                     <Separator />
                     <MenuItem x:Name="CopyCommandItem" Header="Copy update command" Click="CopyCommand_Click" />
+                    <MenuItem x:Name="CopyHintItem" Header="Copy hint" Click="CopyHint_Click" />
                 </ContextMenu>
             </ListView.ContextMenu>
             <ListView.ItemContainerStyle>

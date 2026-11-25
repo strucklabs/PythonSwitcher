@@ -45,6 +45,9 @@ How to use
                                (for the pip summary: all outdated packages).
                                The commands work in PowerShell; commands
                                without quotes also work in the Command Prompt.
+    "Copy hint"              - copies the full hint text of the entry (for
+                               example long file paths), to paste it
+                               elsewhere.
   Several entries can be selected (Ctrl+click or Shift+click): they are then
   checked again one after another, held or released together, and their
   update commands are copied together (pip packages of one Python version as

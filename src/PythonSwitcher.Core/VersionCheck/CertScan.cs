@@ -543,8 +543,9 @@ public sealed class CertScan
         var setText = ini is null
             ? $"No php.ini is loaded yet: copy php.ini-production to php.ini in {dir} and set in it"
             : $"Set in {ini}";
-        var howTo = $"1. Download a certificate file (the command can be copied with \"Copy update command\"): {download}  " +
-                    $"2. {setText}: curl.cainfo = \"{pem}\" and openssl.cafile = \"{pem}\".";
+        // Eigene Zeilen, damit die php.ini-Einträge nach "Copy hint" direkt eingefügt werden können
+        var howTo = $"\n1. Download a certificate file (\"Copy update command\" copies this command):\n{download}" +
+                    $"\n2. {setText} (\"Copy hint\" copies these lines):\ncurl.cainfo = \"{pem}\"\nopenssl.cafile = \"{pem}\"";
 
         if (!string.IsNullOrEmpty(set))
         {
@@ -586,7 +587,7 @@ public sealed class CertScan
         if (CurlCertErrors.Contains(errno))
         {
             return [Row(name, "no certificate file", null, CheckStatus.Problem,
-                $"PHP has no certificate file, so curl cannot verify secure connections ({error}). Fix: {howTo}",
+                $"PHP has no certificate file, so curl cannot verify secure connections ({error}). To fix it:{howTo}",
                 php, target, download)];
         }
         if (errno != 0)
